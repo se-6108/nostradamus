@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - master
+  schedule:
+    # Automatically refresh Yahoo Finance 100 IDX Stocks + Global Macro + News RSS during IDX trading hours (09:15, 12:15, 16:15 WIB)
+    - cron: '15 2,5,9 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -33,6 +36,9 @@ jobs:
 
       - name: Install Dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Fetch Live Yahoo Finance 100 IDX Stocks, Macro & RSS Snapshot
+        run: node scripts/generate-static-market-bundle.mjs
 
       - name: Build Production Bundle (dist/)
         run: npm run build

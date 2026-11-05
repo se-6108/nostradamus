@@ -192,37 +192,6 @@ export function buildIdx100StockUniverse(rebalanceBufferPct: number = 40): Stock
   return rankUniverseWithBuffer(enriched, rebalanceBufferPct);
 }
 
-let proxyRotationIdx = 0;
-
-/**
- * Multi-tier rotated CORS Proxy wrapper for fallback when running on static GitHub Pages without Node backend
- */
-async function fetchViaCorsProxy(targetUrl: string): Promise<any> {
-  const proxyBuilders = [
-    (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-    (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
-  ];
-
-  const startOffset = proxyRotationIdx++;
-  for (let i = 0; i < proxyBuilders.length; i++) {
-    const buildProxy = proxyBuilders[(startOffset + i) % proxyBuilders.length];
-    const proxyUrl = buildProxy(targetUrl);
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 7500);
-      const res = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
-      clearTimeout(timeout);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch {
-      // Try next proxy in rotation
-    }
-  }
-  throw new Error('Endpoint publik Yahoo Finance sedang sibuk.');
-}
-
 export interface SparkSeriesItem {
   symbol: string;
   lastPrice: number;
@@ -231,9 +200,71 @@ export interface SparkSeriesItem {
   shortName?: string;
 }
 
+interface StaticMarketSnapshotPayload {
+  generatedAt?: string;
+  symbolCount?: number;
+  data?: Record<string, SparkSeriesItem>;
+  newsItems?: Array<{
+    id: string;
+    title: string;
+    source: string;
+    publishedAt: string;
+    url: string;
+    region: 'DOMESTIC' | 'GLOBAL';
+    summary?: string;
+  }>;
+}
+
+let cachedLocalServerAvailable: boolean | null = null;
+let cachedStaticSnapshot: StaticMarketSnapshotPayload | null = null;
+let cachedStaticSnapshotAt = 0;
+
+function isStaticHostingEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  if (
+    host.endsWith('.github.io') ||
+    host.endsWith('.pages.dev') ||
+    host.endsWith('.netlify.app') ||
+    host.endsWith('.vercel.app')
+  ) {
+    return true;
+  }
+  return cachedLocalServerAvailable === false;
+}
+
+async function loadStaticMarketSnapshot(forceRefresh = false): Promise<StaticMarketSnapshotPayload | null> {
+  const now = Date.now();
+  if (!forceRefresh && cachedStaticSnapshot && now - cachedStaticSnapshotAt < 45000) {
+    return cachedStaticSnapshot;
+  }
+
+  const candidatePaths = [
+    `./static-market-snapshot.json?v=${Math.floor(now / 60000)}`,
+    `./docs/static-market-snapshot.json?v=${Math.floor(now / 60000)}`
+  ];
+
+  for (const url of candidatePaths) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+        const json = (await res.json()) as StaticMarketSnapshotPayload;
+        if (json && json.data && typeof json.data === 'object') {
+          cachedStaticSnapshot = json;
+          cachedStaticSnapshotAt = now;
+          return json;
+        }
+      }
+    } catch {
+      // try next candidate path
+    }
+  }
+  return cachedStaticSnapshot;
+}
+
 /**
- * Fetches closing price series and latest market quote for a single symbol
- * Tries server-side /api/yahoo/chart first, then falls back to CORS-proxied Yahoo Finance v8 Chart API
+ * Fetches closing price series and latest market quote for a single symbol.
+ * Uses local Express /api/yahoo/chart when available, or pre-synced static-market-snapshot.json on GitHub Pages.
  */
 export async function fetchYahooChartSeries(
   symbol: string,
@@ -244,59 +275,43 @@ export async function fetchYahooChartSeries(
   closes: number[];
   shortName?: string;
 }> {
-  // 1. Try local Express direct proxy (/api/yahoo/chart)
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7500);
-    const srvRes = await fetch(
-      `/api/yahoo/chart?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`,
-      { signal: controller.signal, cache: 'no-store' }
-    );
-    clearTimeout(timer);
-    if (srvRes.ok) {
-      const item = (await srvRes.json()) as SparkSeriesItem;
-      if (item && item.lastPrice > 0 && Array.isArray(item.closes)) {
-        return item;
+  // 1. If local Express backend is available (not on *.github.io), query live /api/yahoo/chart
+  if (!isStaticHostingEnvironment()) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
+      const srvRes = await fetch(
+        `/api/yahoo/chart?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`,
+        { signal: controller.signal, cache: 'no-store' }
+      );
+      clearTimeout(timer);
+      if (srvRes.ok) {
+        cachedLocalServerAvailable = true;
+        const item = (await srvRes.json()) as SparkSeriesItem;
+        if (item && item.lastPrice > 0 && Array.isArray(item.closes)) {
+          return item;
+        }
+      } else if (srvRes.status === 404) {
+        cachedLocalServerAvailable = false;
       }
+    } catch {
+      cachedLocalServerAvailable = false;
     }
-  } catch {
-    // Fallback to CORS proxy below
   }
 
-  // 2. Fallback for static GitHub Pages
-  const host =
-    proxyRotationIdx % 2 === 0 ? 'query1.finance.yahoo.com' : 'query2.finance.yahoo.com';
-  const url = `https://${host}/v8/finance/chart/${encodeURIComponent(
-    symbol
-  )}?range=${range}&interval=1d`;
-
-  const data = await fetchViaCorsProxy(url);
-  const result = data?.chart?.result?.[0];
-  if (!result) {
-    throw new Error(`Ticker ${symbol} tidak ditemukan di Yahoo Finance.`);
+  // 2. Static GitHub Pages Snapshot Lookup (Zero CORS / Zero 403 Forbidden)
+  const snapshot = await loadStaticMarketSnapshot();
+  const snapItem = snapshot?.data?.[symbol];
+  if (snapItem && snapItem.lastPrice > 0 && Array.isArray(snapItem.closes)) {
+    return snapItem;
   }
 
-  const rawCloses = result.indicators?.quote?.[0]?.close || [];
-  const closes = rawCloses.filter((c: unknown): c is number => typeof c === 'number' && c > 0);
-  if (closes.length < 2) {
-    throw new Error(`Data historis untuk ${symbol} tidak mencukupi.`);
-  }
-
-  const lastPrice = result.meta?.regularMarketPrice || closes[closes.length - 1];
-  const prevClose = closes.length >= 2 ? closes[closes.length - 2] : lastPrice;
-  const change1D = prevClose > 0 ? ((lastPrice - prevClose) / prevClose) * 100 : 0;
-
-  return {
-    lastPrice,
-    change1D: Number(change1D.toFixed(2)),
-    closes,
-    shortName: result.meta?.longName || result.meta?.shortName
-  };
+  throw new Error(`Ticker ${symbol} tidak ditemukan di snapshot Yahoo Finance.`);
 }
 
 /**
  * High-Throughput Multi-Symbol Yahoo Spark Batch Fetcher
- * Capable of syncing 100+ stocks + macro indicators in 1-2 seconds without hitting CORS proxy rate limits.
+ * Capable of syncing 100+ stocks + macro indicators in 1-2 seconds with zero CORS 403 or 404 console errors.
  */
 export async function fetchYahooSparkBatch(
   symbols: string[],
@@ -307,94 +322,69 @@ export async function fetchYahooSparkBatch(
   const resultMap: Record<string, SparkSeriesItem> = {};
   if (uniqueSymbols.length === 0) return resultMap;
 
-  // Path 1: Direct Server-Side Batch Endpoint (/api/yahoo/spark) in chunks of 30 symbols
-  let serverAvailable = true;
-  const SERVER_BATCH_SIZE = 30;
-  for (let i = 0; i < uniqueSymbols.length; i += SERVER_BATCH_SIZE) {
-    const batch = uniqueSymbols.slice(i, i + SERVER_BATCH_SIZE);
-    onChunkProgress?.(
-      Object.keys(resultMap).length,
-      uniqueSymbols.length,
-      `${batch[0]} .. ${batch[batch.length - 1]}`
-    );
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 12000);
-      const res = await fetch(
-        `/api/yahoo/spark?symbols=${encodeURIComponent(batch.join(','))}&range=${encodeURIComponent(
-          range
-        )}`,
-        { signal: controller.signal, cache: 'no-store' }
+  // Path 1: Direct Server-Side Batch Endpoint (/api/yahoo/spark) when not on static *.github.io
+  if (!isStaticHostingEnvironment()) {
+    let serverAvailable = true;
+    const SERVER_BATCH_SIZE = 30;
+    for (let i = 0; i < uniqueSymbols.length; i += SERVER_BATCH_SIZE) {
+      const batch = uniqueSymbols.slice(i, i + SERVER_BATCH_SIZE);
+      onChunkProgress?.(
+        Object.keys(resultMap).length,
+        uniqueSymbols.length,
+        `${batch[0]} .. ${batch[batch.length - 1]}`
       );
-      clearTimeout(timer);
-      if (res.ok) {
-        const json = await res.json();
-        if (json?.data && typeof json.data === 'object') {
-          Object.assign(resultMap, json.data);
-          onChunkProgress?.(
-            Object.keys(resultMap).length,
-            uniqueSymbols.length,
-            batch[batch.length - 1]
-          );
-          continue;
-        }
-      }
-      serverAvailable = false;
-      break;
-    } catch {
-      serverAvailable = false;
-      break;
-    }
-  }
-
-  if (serverAvailable && Object.keys(resultMap).length > 0) {
-    return resultMap;
-  }
-
-  // Path 2: Static GitHub Pages Fallback using batched /v8/finance/spark via rotated CORS proxies (15 symbols per request)
-  const SPARK_CHUNK_SIZE = 15;
-  for (let i = 0; i < uniqueSymbols.length; i += SPARK_CHUNK_SIZE) {
-    const chunk = uniqueSymbols.slice(i, i + SPARK_CHUNK_SIZE);
-    const host =
-      (i / SPARK_CHUNK_SIZE) % 2 === 0
-        ? 'query1.finance.yahoo.com'
-        : 'query2.finance.yahoo.com';
-    const sparkUrl = `https://${host}/v8/finance/spark?symbols=${chunk
-      .map((s) => encodeURIComponent(s))
-      .join(',')}&range=${encodeURIComponent(range)}&interval=1d`;
-
-    try {
-      const sparkData = await fetchViaCorsProxy(sparkUrl);
-      if (sparkData && typeof sparkData === 'object') {
-        for (const sym of chunk) {
-          const entry = sparkData[sym];
-          const rawCloses: Array<number | null> = entry?.close || [];
-          const closes = rawCloses.filter(
-            (c): c is number => typeof c === 'number' && Number.isFinite(c) && c > 0
-          );
-          if (closes.length >= 2) {
-            const lastPrice = closes[closes.length - 1];
-            const prevClose = closes[closes.length - 2] || entry?.chartPreviousClose || lastPrice;
-            const change1D =
-              prevClose > 0
-                ? Number((((lastPrice - prevClose) / prevClose) * 100).toFixed(2))
-                : 0;
-            resultMap[sym] = {
-              symbol: sym,
-              lastPrice,
-              change1D,
-              closes
-            };
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        const res = await fetch(
+          `/api/yahoo/spark?symbols=${encodeURIComponent(batch.join(','))}&range=${encodeURIComponent(
+            range
+          )}`,
+          { signal: controller.signal, cache: 'no-store' }
+        );
+        clearTimeout(timer);
+        if (res.ok) {
+          cachedLocalServerAvailable = true;
+          const json = await res.json();
+          if (json?.data && typeof json.data === 'object') {
+            Object.assign(resultMap, json.data);
+            onChunkProgress?.(
+              Object.keys(resultMap).length,
+              uniqueSymbols.length,
+              batch[batch.length - 1]
+            );
+            continue;
           }
         }
+        cachedLocalServerAvailable = false;
+        serverAvailable = false;
+        break;
+      } catch {
+        cachedLocalServerAvailable = false;
+        serverAvailable = false;
+        break;
       }
-    } catch {
-      // ignore chunk error
+    }
+
+    if (serverAvailable && Object.keys(resultMap).length > 0) {
+      return resultMap;
+    }
+  }
+
+  // Path 2: Static GitHub Pages Snapshot Bundle (109 Symbols Pre-Synced via GitHub Actions Yahoo Finance Stream)
+  const snapshot = await loadStaticMarketSnapshot(true);
+  if (snapshot?.data) {
+    for (let i = 0; i < uniqueSymbols.length; i++) {
+      const sym = uniqueSymbols[i];
+      const item = snapshot.data[sym];
+      if (item && item.lastPrice > 0 && Array.isArray(item.closes) && item.closes.length >= 2) {
+        resultMap[sym] = item;
+      }
     }
     onChunkProgress?.(
       Object.keys(resultMap).length,
       uniqueSymbols.length,
-      chunk[chunk.length - 1]
+      uniqueSymbols[uniqueSymbols.length - 1] || 'Selesai'
     );
   }
 
@@ -827,45 +817,80 @@ async function fetchRssFeedItems(
 
 /**
  * Live Financial RSS News & Sentiment Fetcher
- * Uses direct server /api/news/rss first, then falls back to browser RSS endpoints.
+ * Uses direct server /api/news/rss when available, or pre-synced static-market-snapshot.json + rss2json on GitHub Pages.
  */
 export async function fetchLiveFinancialNewsRss(
   fallbackNews: NewsSentimentItem[]
 ): Promise<NewsSentimentItem[]> {
-  // 1. Try direct server endpoint (/api/news/rss)
-  try {
-    const res = await fetch('/api/news/rss', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.items) && data.items.length > 0) {
-        return data.items.map((raw: any) => {
-          const region: 'DOMESTIC' | 'GLOBAL' =
-            raw.region === 'DOMESTIC' ? 'DOMESTIC' : 'GLOBAL';
-          const cleanTitle = decodeHtmlEntities(String(raw.title || ''));
-          const cleanSummary = raw.summary ? decodeHtmlEntities(String(raw.summary)) : undefined;
-          const { sentiment, impactedSectors } = classifyHeadlineSentiment(
-            cleanTitle,
-            region
-          );
-          return {
-            id: raw.id,
-            title: cleanTitle,
-            source: raw.source,
-            publishedAt: raw.publishedAt,
-            url: raw.url,
-            region,
-            summary: cleanSummary,
-            sentiment,
-            impactedSectors
-          } as NewsSentimentItem;
-        });
+  // 1. Try direct server endpoint (/api/news/rss) only when not on static *.github.io
+  if (!isStaticHostingEnvironment()) {
+    try {
+      const res = await fetch('/api/news/rss', { cache: 'no-store' });
+      if (res.ok) {
+        cachedLocalServerAvailable = true;
+        const data = await res.json();
+        if (Array.isArray(data?.items) && data.items.length > 0) {
+          return data.items.map((raw: any) => {
+            const region: 'DOMESTIC' | 'GLOBAL' =
+              raw.region === 'DOMESTIC' ? 'DOMESTIC' : 'GLOBAL';
+            const cleanTitle = decodeHtmlEntities(String(raw.title || ''));
+            const cleanSummary = raw.summary ? decodeHtmlEntities(String(raw.summary)) : undefined;
+            const { sentiment, impactedSectors } = classifyHeadlineSentiment(
+              cleanTitle,
+              region
+            );
+            return {
+              id: raw.id,
+              title: cleanTitle,
+              source: raw.source,
+              publishedAt: raw.publishedAt,
+              url: raw.url,
+              region,
+              summary: cleanSummary,
+              sentiment,
+              impactedSectors
+            } as NewsSentimentItem;
+          });
+        }
+      } else if (res.status === 404) {
+        cachedLocalServerAvailable = false;
       }
+    } catch {
+      cachedLocalServerAvailable = false;
+    }
+  }
+
+  // 2. Load Pre-Synced Live RSS News from static-market-snapshot.json (Zero 404 / Zero CORS Error)
+  try {
+    const snapshot = await loadStaticMarketSnapshot();
+    if (Array.isArray(snapshot?.newsItems) && snapshot.newsItems.length > 0) {
+      return snapshot.newsItems.map((raw) => {
+        const region: 'DOMESTIC' | 'GLOBAL' =
+          raw.region === 'DOMESTIC' ? 'DOMESTIC' : 'GLOBAL';
+        const cleanTitle = decodeHtmlEntities(String(raw.title || ''));
+        const cleanSummary = raw.summary ? decodeHtmlEntities(String(raw.summary)) : undefined;
+        const { sentiment, impactedSectors } = classifyHeadlineSentiment(
+          cleanTitle,
+          region
+        );
+        return {
+          id: raw.id,
+          title: cleanTitle,
+          source: raw.source,
+          publishedAt: raw.publishedAt,
+          url: raw.url,
+          region,
+          summary: cleanSummary,
+          sentiment,
+          impactedSectors
+        } as NewsSentimentItem;
+      });
     }
   } catch {
     // Fallback below
   }
 
-  // 2. Browser RSS fallback
+  // 3. Browser RSS fallback via rss2json
   try {
     const [domesticCnbc, domesticAntara, globalMw, globalCnbc] = await Promise.all([
       fetchRssFeedItems(
