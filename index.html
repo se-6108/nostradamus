@@ -13,20 +13,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <!-- GH_PAGES_RAW_ROOT_REDIRECT_START -->
-    <script>
-      (function () {
-        if (window.location.hostname.endsWith('.github.io') && !window.location.pathname.includes('/docs/')) {
-          var basePath = window.location.pathname.replace(/\/index\.html$/, '').replace(/\/$/, '');
-          window.location.replace(basePath + '/docs/' + window.location.search + window.location.hash);
-        }
-      })();
-    </script>
-    <!-- GH_PAGES_RAW_ROOT_REDIRECT_END -->
   </head>
   <body class="bg-[#090C10] text-[#E5E7EB] antialiased selection:bg-[#F59E0B] selection:text-[#090C10]">
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <!-- VITE_ENTRY_START -->
+    <link rel="stylesheet" crossorigin href="./docs/assets/index.css" />
+    <script type="module" crossorigin src="./docs/assets/app.js"></script>
+    <!-- VITE_ENTRY_END -->
   </body>
 </html>
 

@@ -3,25 +3,34 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(({command}) => {
+export default defineConfig(() => {
   return {
     base: './',
     plugins: [
-      react(),
-      tailwindcss(),
       {
-        name: 'strip-raw-root-gh-pages-redirect',
-        transformIndexHtml(html) {
-          if (command === 'build') {
+        name: 'github-pages-hybrid-entry',
+        transformIndexHtml: {
+          order: 'pre',
+          handler(html) {
             return html.replace(
-              /<!-- GH_PAGES_RAW_ROOT_REDIRECT_START -->[\s\S]*?<!-- GH_PAGES_RAW_ROOT_REDIRECT_END -->/,
-              ''
+              /<!-- VITE_ENTRY_START -->[\s\S]*?<!-- VITE_ENTRY_END -->/,
+              '<script type="module" src="/src/main.tsx"></script>'
             );
-          }
-          return html;
+          },
         },
       },
+      react(),
+      tailwindcss(),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/app.js',
+          chunkFileNames: 'assets/[name].js',
+          assetFileNames: 'assets/[name].[ext]',
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
