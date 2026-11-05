@@ -3,9 +3,25 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({command}) => {
   return {
-    plugins: [react(), tailwindcss()],
+    base: './',
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'strip-raw-root-gh-pages-redirect',
+        transformIndexHtml(html) {
+          if (command === 'build') {
+            return html.replace(
+              /<!-- GH_PAGES_RAW_ROOT_REDIRECT_START -->[\s\S]*?<!-- GH_PAGES_RAW_ROOT_REDIRECT_END -->/,
+              ''
+            );
+          }
+          return html;
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
