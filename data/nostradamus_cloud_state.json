@@ -1,10 +1,10 @@
 {
   "schemaVersion": "3.0-DEMIGUEL-MF24",
-  "updatedAt": "2026-11-07T07:17:53.846Z",
+  "updatedAt": "2026-11-07T07:18:57.467Z",
   "strategyName": "Vol-Managed Multifactor + 40% Buffer",
   "rebalanceBufferPct": 40,
   "thresholdAnnVol": 18,
-  "capitalIdr": 5777281,
+  "capitalIdr": 14445281,
   "cashReserveIdr": 2781,
   "holdings": [
     {
@@ -46,6 +46,13 @@
       "ticker": "IDEA",
       "lots": 440,
       "avgBuyPrice": 189,
+      "addedAt": "2026-11-07",
+      "notes": "Active Multifactor Position"
+    },
+    {
+      "ticker": "NISP",
+      "lots": 6,
+      "avgBuyPrice": 1110,
       "addedAt": "2026-11-07",
       "notes": "Active Multifactor Position"
     }
