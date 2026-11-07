@@ -1,25 +1,18 @@
 {
   "schemaVersion": "3.0-DEMIGUEL-MF24",
-  "updatedAt": "2026-11-07T07:07:47.127Z",
+  "updatedAt": "2026-11-07T07:08:38.124Z",
   "strategyName": "Vol-Managed Multifactor + 40% Buffer",
   "rebalanceBufferPct": 40,
   "thresholdAnnVol": 18,
-  "capitalIdr": 10000000,
+  "capitalIdr": 15000000,
   "cashReserveIdr": 15000000,
   "holdings": [
     {
-      "ticker": "BMRI",
-      "lots": 50,
-      "avgBuyPrice": 3750,
-      "addedAt": "2026-10-20",
-      "notes": "40% Rebalancing Buffer Hold"
-    },
-    {
-      "ticker": "SIDO",
-      "lots": 350,
-      "avgBuyPrice": 305,
-      "addedAt": "2026-10-25",
-      "notes": "Low-Volatility Factor Leader"
+      "ticker": "BRIS",
+      "lots": 12,
+      "avgBuyPrice": 1044,
+      "addedAt": "2026-11-07",
+      "notes": "Active Multifactor Position"
     }
   ],
   "stocks": [
