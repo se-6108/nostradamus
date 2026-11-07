@@ -15,6 +15,10 @@ import {
   RecommendationStrategyTag,
   StockMetrics
 } from '../types/quant';
+import {
+  getEmitenDividendYield,
+  isInstitutionalLiquidCandidate
+} from '../data/idxAllEmitenCatalog';
 
 export type RawStockInput = Omit<
   StockMetrics,
@@ -331,6 +335,27 @@ export function computeDeMiguelFourFactors(item: RawStockInput): {
   dmuSizeScore: number;
   dmuCompositeScore: number;
 } {
+  const isLiquid = item.isLiquid !== false && item.lastPrice >= 68;
+  const divYield = item.dividendYieldPct ?? getEmitenDividendYield(item.ticker);
+
+  // If stock is illiquid, stagnant/suspended, gocap (< Rp 68), or unverified on Yahoo Finance:
+  // Penalize Low-Vol, Size/Liq, and Composite Score so it NEVER masquerades as a Low-Volatility leader!
+  if (!isLiquid) {
+    const roeComp = Math.max(0, Math.min(10, (Math.min(32, item.roe) / 24) * 9.2));
+    const marginComp = Math.max(0, Math.min(10, (item.operatingMargin / 38) * 9.5));
+    const deComp = Math.max(1, Math.min(10, 10 - (item.debtToEquity / 2.2) * 8));
+    const dmuValueScore = Number(
+      Math.max(1.0, Math.min(5.5, (0.42 * roeComp + 0.30 * marginComp + 0.28 * deComp) * 0.65)).toFixed(1)
+    );
+    return {
+      dmuLowVolScore: 1.5,
+      dmuMomScore: 1.8,
+      dmuValueScore,
+      dmuSizeScore: 1.4,
+      dmuCompositeScore: Number(Math.min(2.65, 0.25 * dmuValueScore + 1.4).toFixed(2))
+    };
+  }
+
   // 1. Live Low-Volatility & Beta Stability Score (Sensitive to live 30D realized vol & 1Y beta)
   const volSafety = Math.max(1, Math.min(10, 10 - (item.volatilityAnn - 12.5) * 0.27));
   const betaSafety = Math.max(1, Math.min(10, 10 - (item.beta1Y - 0.45) * 5.6));
@@ -345,7 +370,7 @@ export function computeDeMiguelFourFactors(item: RawStockInput): {
   const relMomRaw = 5.4 + item.return30D * 0.38 + item.change1D * 0.48 + riskAdjTrend;
   const dmuMomScore = Number(Math.max(1.0, Math.min(9.9, relMomRaw)).toFixed(1));
 
-  // 3. Dynamic Value & Yield Score (Adjusts fundamental quality by live price valuation vs anchor)
+  // 3. Dynamic Value & Dividend Yield Score (Adjusts fundamental quality by live price valuation vs anchor + Dividend Yield)
   const anchorPrice = BASELINE_PRICE_ANCHORS[item.ticker] || item.lastPrice;
   const liveValuationMultiplier =
     item.lastPrice > 0
@@ -355,14 +380,20 @@ export function computeDeMiguelFourFactors(item: RawStockInput): {
   const roeComp = Math.max(0, Math.min(10, (Math.min(32, item.roe) / 24) * 9.2));
   const marginComp = Math.max(0, Math.min(10, (item.operatingMargin / 38) * 9.5));
   const deComp = Math.max(1, Math.min(10, 10 - (item.debtToEquity / 2.2) * 8));
-  const rawValue = (0.42 * roeComp + 0.30 * marginComp + 0.28 * deComp) * liveValuationMultiplier;
+  const divBonus = divYield > 0 ? Math.min(1.15, divYield * 0.16) : 0;
+  const rawValue =
+    (0.42 * roeComp + 0.30 * marginComp + 0.28 * deComp) * liveValuationMultiplier + divBonus;
   const dmuValueScore = Number(Math.max(1.0, Math.min(9.9, rawValue)).toFixed(1));
 
-  // 4. Capital Efficiency & Balance Sheet Size Score
+  // 4. Capital Efficiency & Institutional Liquidity Score
+  const instLiqBonus = isInstitutionalLiquidCandidate(item.ticker) ? 0.65 : 0;
   const dmuSizeScore = Number(
     Math.max(
       1.0,
-      Math.min(9.9, 0.52 * deComp + 0.33 * roeComp + (item.change1D >= 0 ? 0.6 : 0.1))
+      Math.min(
+        9.9,
+        0.50 * deComp + 0.32 * roeComp + (item.change1D >= 0 ? 0.5 : 0.1) + instLiqBonus
+      )
     ).toFixed(1)
   );
 
@@ -389,6 +420,14 @@ export function computeSleeveSpecificScore(
   basket: 'DEFENSIVE' | 'AGGRESSIVE',
   mode: BasketSelectionMode = 'LIVE_FACTOR_LEADER'
 ): number {
+  if (stock.isLiquid === false || stock.lastPrice < 68 || stock.isLiveFetched === false) {
+    return -99;
+  }
+
+  const divYield = stock.dividendYieldPct ?? 0;
+  const divBoost = divYield > 0 ? Math.min(1.35, divYield * 0.18) : 0;
+  const instBoost = isInstitutionalLiquidCandidate(stock.ticker) ? 0.65 : 0;
+
   if (basket === 'DEFENSIVE') {
     if (mode === 'TOP_GAINERS_MOMENTUM') {
       return Number(
@@ -397,17 +436,21 @@ export function computeSleeveSpecificScore(
           0.28 * stock.dmuValueScore +
           0.30 * stock.dmuMomScore +
           stock.change1D * 0.75 +
-          stock.return30D * 0.22
+          stock.return30D * 0.22 +
+          divBoost +
+          instBoost
         ).toFixed(2)
       );
     }
-    // Default Defensive Core: 50% Low-Vol + 30% Live-Adjusted Value + 20% Trend Stability
+    // Default Defensive Core: 50% Low-Vol + 30% Live-Adjusted Value + 20% Trend Stability + Dividend Yield Priority
     return Number(
       (
         0.50 * stock.dmuLowVolScore +
         0.30 * stock.dmuValueScore +
         0.20 * stock.dmuMomScore +
-        stock.change1D * 0.15
+        stock.change1D * 0.15 +
+        divBoost +
+        instBoost
       ).toFixed(2)
     );
   }
@@ -419,7 +462,8 @@ export function computeSleeveSpecificScore(
         0.45 * stock.dmuMomScore +
         stock.change1D * 1.25 +
         stock.return30D * 0.42 +
-        0.15 * stock.dmuSizeScore
+        0.15 * stock.dmuSizeScore +
+        instBoost * 0.7
       ).toFixed(2)
     );
   }
@@ -434,7 +478,8 @@ export function computeSleeveSpecificScore(
       0.40 * stock.dmuMomScore +
       0.25 * liveSurgeComponent +
       0.20 * stock.dmuSizeScore +
-      0.15 * stock.dmuValueScore
+      0.15 * stock.dmuValueScore +
+      instBoost * 0.7
     ).toFixed(2)
   );
 }
@@ -446,18 +491,22 @@ export function getBasketSelectionReason(
 ): string {
   const c1d = `${stock.change1D >= 0 ? '+' : ''}${stock.change1D.toFixed(2)}%`;
   const r30 = `${stock.return30D >= 0 ? '+' : ''}${stock.return30D.toFixed(1)}%`;
+  const divPart =
+    (stock.dividendYieldPct ?? 0) > 0
+      ? ` · DIV ${(stock.dividendYieldPct ?? 0).toFixed(1)}%`
+      : '';
 
   if (basket === 'DEFENSIVE') {
     if (mode === 'TOP_GAINERS_MOMENTUM') {
-      return `Low-Beta Gainer: 1D ${c1d} · 30D ${r30} · β ${stock.beta1Y.toFixed(2)}x`;
+      return `Low-Beta Gainer: 1D ${c1d} · 30D ${r30} · β ${stock.beta1Y.toFixed(2)}x${divPart}`;
     }
-    return `Low-Vol ${stock.dmuLowVolScore.toFixed(1)} · Val ${stock.dmuValueScore.toFixed(1)} · Vol ${stock.volatilityAnn.toFixed(1)}% (β ${stock.beta1Y.toFixed(2)})`;
+    return `Low-Vol ${stock.dmuLowVolScore.toFixed(1)} · Val ${stock.dmuValueScore.toFixed(1)} · Vol ${stock.volatilityAnn.toFixed(1)}% (β ${stock.beta1Y.toFixed(2)})${divPart}`;
   }
 
   if (mode === 'TOP_GAINERS_MOMENTUM') {
-    return `Breakout Live: 1D ${c1d} · 30D ${r30} · Mom ${stock.dmuMomScore.toFixed(1)}`;
+    return `Breakout Live: 1D ${c1d} · 30D ${r30} · Mom ${stock.dmuMomScore.toFixed(1)}${divPart}`;
   }
-  return `Mom Live ${stock.dmuMomScore.toFixed(1)} · 30D ${r30} · 1D ${c1d} · Size ${stock.dmuSizeScore.toFixed(1)}`;
+  return `Mom Live ${stock.dmuMomScore.toFixed(1)} · 30D ${r30} · 1D ${c1d} · Size ${stock.dmuSizeScore.toFixed(1)}${divPart}`;
 }
 
 export function classifyBarbellRole(beta1Y: number, dmuCompositeScore: number): BarbellRole {
@@ -474,27 +523,43 @@ export function classifyBarbellRole(beta1Y: number, dmuCompositeScore: number): 
 }
 
 export function enrichStockMetrics(item: RawStockInput): StockMetrics {
-  const factors = computeDeMiguelFourFactors(item);
-  const hrpPropensity = Number(
-    ((factors.dmuCompositeScore / Math.max(11, item.volatilityAnn)) * 10).toFixed(2)
-  );
-  const role = classifyBarbellRole(item.beta1Y, factors.dmuCompositeScore);
+  const dividendYieldPct = item.dividendYieldPct ?? getEmitenDividendYield(item.ticker);
+  const isLiquid =
+    item.isLiquid !== undefined
+      ? item.isLiquid
+      : item.lastPrice >= 68 && item.isLiveFetched !== false;
 
-  const dmuRankPct =
-    factors.dmuCompositeScore >= 7.4
-      ? 12
-      : factors.dmuCompositeScore >= 6.4
-      ? 32
-      : 72;
-  const dmuZone: DeMiguelBufferZone =
-    dmuRankPct <= 20
-      ? 'TOP_DECILE_BUY'
-      : dmuRankPct <= 40
-      ? 'BUFFER_HOLD_40'
-      : 'ROTATE_OUT';
+  const normalizedInput: RawStockInput = {
+    ...item,
+    isLiquid,
+    dividendYieldPct
+  };
+
+  const factors = computeDeMiguelFourFactors(normalizedInput);
+  const hrpPropensity = isLiquid
+    ? Number(((factors.dmuCompositeScore / Math.max(11, item.volatilityAnn)) * 10).toFixed(2))
+    : 0.1;
+  const role: BarbellRole = isLiquid
+    ? classifyBarbellRole(item.beta1Y, factors.dmuCompositeScore)
+    : 'AVOID_JUNK';
+
+  const dmuRankPct = !isLiquid
+    ? 95
+    : factors.dmuCompositeScore >= 7.4
+    ? 12
+    : factors.dmuCompositeScore >= 6.4
+    ? 32
+    : 72;
+  const dmuZone: DeMiguelBufferZone = !isLiquid
+    ? 'ROTATE_OUT'
+    : dmuRankPct <= 20
+    ? 'TOP_DECILE_BUY'
+    : dmuRankPct <= 40
+    ? 'BUFFER_HOLD_40'
+    : 'ROTATE_OUT';
 
   return {
-    ...item,
+    ...normalizedInput,
     ...factors,
     dmuRankPct,
     dmuZone,
@@ -509,19 +574,26 @@ export function rankUniverseWithBuffer(
   list: StockMetrics[],
   rebalanceBufferPct: number = 40
 ): StockMetrics[] {
-  const sorted = [...list].sort((a, b) => b.dmuCompositeScore - a.dmuCompositeScore);
+  const sorted = [...list].sort((a, b) => {
+    const aLiq = a.isLiquid !== false && a.lastPrice >= 68 ? 1 : 0;
+    const bLiq = b.isLiquid !== false && b.lastPrice >= 68 ? 1 : 0;
+    if (aLiq !== bLiq) return bLiq - aLiq;
+    return b.dmuCompositeScore - a.dmuCompositeScore;
+  });
   const n = Math.max(1, sorted.length);
   const rankMap = new Map<string, { rankPct: number; zone: DeMiguelBufferZone }>();
 
   sorted.forEach((s, idx) => {
     const rankPct = Math.round(((idx + 1) / n) * 100);
     const topCutoff = Math.min(22, Math.round(rebalanceBufferPct * 0.5));
-    const zone: DeMiguelBufferZone =
-      rankPct <= topCutoff
-        ? 'TOP_DECILE_BUY'
-        : rankPct <= rebalanceBufferPct
-        ? 'BUFFER_HOLD_40'
-        : 'ROTATE_OUT';
+    const isStockLiquid = s.isLiquid !== false && s.lastPrice >= 68;
+    const zone: DeMiguelBufferZone = !isStockLiquid
+      ? 'ROTATE_OUT'
+      : rankPct <= topCutoff
+      ? 'TOP_DECILE_BUY'
+      : rankPct <= rebalanceBufferPct
+      ? 'BUFFER_HOLD_40'
+      : 'ROTATE_OUT';
     rankMap.set(s.ticker, { rankPct, zone });
   });
 
@@ -538,8 +610,8 @@ export function rankUniverseWithBuffer(
 
 /**
  * Portfolio Optimizer & BEI Lot-100 Calculator
- * Uses distinct, live-responsive scoring formulas for Keranjang 1 (Defensive Low-Vol & Value)
- * vs Keranjang 2 (Live Momentum & Size Alpha).
+ * Strictly blocks illiquid, stagnant/suspended (gocap), and unverified Yahoo Finance stocks
+ * from entering Keranjang 1 or Keranjang 2, and prioritizes dividend-paying quality issuers in Keranjang 1.
  */
 export function computeOptimalHRPBarbellPortfolio(
   stocks: StockMetrics[],
@@ -548,8 +620,24 @@ export function computeOptimalHRPBarbellPortfolio(
   maxPicksPerSleeve: number = 4,
   selectionMode: BasketSelectionMode = 'LIVE_FACTOR_LEADER'
 ): PortfolioAnalyticsSummary {
-  const liveOnlyPool = stocks.filter((s) => s.isLiveFetched === true);
-  const baseUniverse = liveOnlyPool.length >= 4 ? liveOnlyPool : stocks;
+  // Strictly require live-fetched, liquid stocks (price >= Rp 80, active trading volume/movement, institutional liquidity)
+  const institutionalLiquidPool = stocks.filter(
+    (s) =>
+      s.isLiveFetched === true &&
+      s.isLiquid !== false &&
+      s.lastPrice >= 80 &&
+      isInstitutionalLiquidCandidate(s.ticker)
+  );
+  const fallbackLiquidPool = stocks.filter(
+    (s) => s.isLiveFetched === true && s.isLiquid !== false && s.lastPrice >= 80
+  );
+  const baseUniverse =
+    institutionalLiquidPool.length >= 8
+      ? institutionalLiquidPool
+      : fallbackLiquidPool.length >= 4
+      ? fallbackLiquidPool
+      : stocks.filter((s) => s.lastPrice >= 80);
+
   const rankedStocks = rankUniverseWithBuffer(baseUniverse, 40);
   const maxPerSector = selectionMode === 'SECTOR_ROTATION' ? 1 : 2;
 
@@ -589,19 +677,26 @@ export function computeOptimalHRPBarbellPortfolio(
     return selected;
   };
 
-  // 1. Select Keranjang 1 (Low-Volatility & Value Core: Beta <= 0.96, Positive ROE)
+  // 1. Select Keranjang 1 (Low-Volatility, Dividend & Value Core: Liquid, Beta <= 0.96, Positive ROE)
   const defCandidates = selectSleeveCandidates(
-    (s) => s.roe > 0 && s.beta1Y <= 0.96 && s.dmuLowVolScore >= 5.5,
+    (s) =>
+      s.isLiquid !== false &&
+      s.lastPrice >= 80 &&
+      s.roe >= 8 &&
+      s.beta1Y <= 0.96 &&
+      s.dmuLowVolScore >= 5.5,
     'DEFENSIVE',
     maxPicksPerSleeve
   );
   const selectedDefTickers = new Set(defCandidates.map((s) => s.ticker));
 
-  // 2. Select Keranjang 2 (Momentum & Size Alpha: Non-Keranjang 1 candidates with strong live momentum/beta)
+  // 2. Select Keranjang 2 (Momentum & Size Alpha: Liquid Non-Keranjang 1 candidates with strong live momentum/beta)
   const aggCandidates = selectSleeveCandidates(
     (s) =>
       !selectedDefTickers.has(s.ticker) &&
-      s.roe > 0 &&
+      s.isLiquid !== false &&
+      s.lastPrice >= 80 &&
+      s.roe >= 5 &&
       (selectionMode === 'TOP_GAINERS_MOMENTUM'
         ? s.change1D >= -1.0
         : s.beta1Y > 0.78 || s.return30D > 0 || s.change1D > 0.5),
@@ -902,7 +997,13 @@ export function generateCandidateRecommendations(
   );
 
   const candidates = rankedStocks.filter(
-    (s) => !heldTickers.has(s.ticker) && s.dmuCompositeScore >= 6.2
+    (s) =>
+      !heldTickers.has(s.ticker) &&
+      s.isLiquid !== false &&
+      s.isLiveFetched !== false &&
+      s.lastPrice >= 80 &&
+      isInstitutionalLiquidCandidate(s.ticker) &&
+      s.dmuCompositeScore >= 6.2
   );
 
   const recs: CandidateRecommendation[] = candidates.map((stock) => {

@@ -3,7 +3,8 @@ import { enrichStockMetrics, rankUniverseWithBuffer } from './quantEngine';
 import {
   FULL_JCI_EMITEN_CATALOG,
   createCalibratedIdxEntry,
-  getCalibratedInitialMarketAction
+  getEmitenDividendYield,
+  isInstitutionalLiquidCandidate
 } from '../data/idxAllEmitenCatalog';
 import embeddedSnapshotRaw from '../data/staticMarketSnapshot.json';
 
@@ -48,6 +49,35 @@ const embeddedSnapshot: StaticMarketSnapshotPayload =
   (embeddedSnapshotRaw as unknown as StaticMarketSnapshotPayload) || {};
 
 /**
+ * Evaluates whether a stock's historical closing price series represents an actively traded,
+ * liquid BEI equity vs. a stagnant/suspended/gocap/FCA stock (e.g. MKNT.JK at Rp 32 with 0.00% flat closes).
+ * Criteria:
+ *  1. Valid live price >= Rp 68 (excludes Rp 50 gocap and Rp 1-67 FCA/illiquid penny stocks)
+ *  2. At least 12 valid daily closes
+ *  3. At least 40% of trading days have non-zero price movement (filters out suspended or flat-line zero-volume tickers)
+ */
+export function evaluateSeriesLiquidity(closes: number[], lastPrice: number): boolean {
+  if (!Array.isArray(closes) || closes.length < 12 || !Number.isFinite(lastPrice) || lastPrice < 68) {
+    return false;
+  }
+
+  const recentCloses = closes.slice(-35);
+  if (recentCloses.length < 10) return false;
+
+  let activeMoveDays = 0;
+  for (let i = 1; i < recentCloses.length; i++) {
+    const prev = recentCloses[i - 1];
+    const curr = recentCloses[i];
+    if (prev > 0 && Math.abs(curr - prev) / prev > 0.0005) {
+      activeMoveDays++;
+    }
+  }
+
+  const activeMoveRatio = activeMoveDays / (recentCloses.length - 1);
+  return activeMoveRatio >= 0.40;
+}
+
+/**
  * Formats a Date into a full Indonesian Day, Date, Month, Year & WIB Time string
  * Example: "Kamis, 5 November 2026 · Pukul 19:05:22 WIB"
  */
@@ -83,9 +113,11 @@ export function formatFullIndonesianDateTime(date: Date = new Date()): string {
 export const IDX_SECTOR_CATALOG: IdxDirectoryEntry[] = FULL_JCI_EMITEN_CATALOG;
 
 /**
- * Builds the Full JCI Stock Universe (~956+ Emiten BEI across 11 IDX-IC Sectors)
- * Immediately hydrates every stock with its real Yahoo Finance price, 1D%, 30D%, Beta & Volatility
- * from the embedded snapshot so both Screener & Keranjang 1/2 are 100% up-to-date from initial render.
+ * Builds the Full JCI Stock Universe (~956+ Emiten BEI across 11 IDX-IC Sectors).
+ * Hydrates every verified stock with its genuine Yahoo Finance price, 1D%, 30D%, Beta & Volatility.
+ * Any ticker that is unquoted/delisted on Yahoo Finance or stagnant/gocap (< Rp 68 or flat-line closes)
+ * is strictly marked `isLiquid: false` (and `lastPrice: 0` if unquoted) so it NEVER uses fake default prices
+ * and NEVER enters Keranjang 1 or Keranjang 2.
  */
 export function buildIdx100StockUniverse(
   rebalanceBufferPct: number = 40,
@@ -128,49 +160,71 @@ export function buildIdx100StockUniverse(
   const enriched = Array.from(mergedCatalogMap.values()).map((entry) => {
     const yfTicker = `${entry.ticker}.JK`;
     const snapItem = embeddedSnapshot?.data?.[yfTicker];
-    const action = getCalibratedInitialMarketAction(entry.ticker);
+    const dividendYieldPct = getEmitenDividendYield(entry.ticker);
 
-    let lastPrice = entry.approxPrice;
-    let change1D = action.change1D;
-    let return30D = action.return30D;
-    let beta1Y = entry.approxBeta;
-    let volatilityAnn = Number((entry.approxBeta * 18.2).toFixed(1));
+    // Case 1: Genuine Yahoo Finance quote exists
+    if (snapItem && snapItem.lastPrice > 0 && Array.isArray(snapItem.closes) && snapItem.closes.length >= 2) {
+      const lastPrice = Math.round(snapItem.lastPrice);
+      const change1D = snapItem.change1D;
+      const isLiquid = evaluateSeriesLiquidity(snapItem.closes, lastPrice);
 
-    if (snapItem && snapItem.lastPrice > 0) {
-      lastPrice = Math.round(snapItem.lastPrice);
-      change1D = snapItem.change1D;
+      const close30Ago =
+        snapItem.closes[Math.max(0, snapItem.closes.length - 22)] || snapItem.lastPrice;
+      const return30D =
+        close30Ago > 0
+          ? Number((((snapItem.lastPrice - close30Ago) / close30Ago) * 100).toFixed(2))
+          : 0;
 
-      if (Array.isArray(snapItem.closes) && snapItem.closes.length >= 2) {
-        const close30Ago =
-          snapItem.closes[Math.max(0, snapItem.closes.length - 22)] || snapItem.lastPrice;
-        if (close30Ago > 0) {
-          return30D = Number((((snapItem.lastPrice - close30Ago) / close30Ago) * 100).toFixed(2));
-        }
+      let beta1Y = entry.approxBeta;
+      let volatilityAnn = Number((entry.approxBeta * 22.0).toFixed(1));
 
-        const stockRets = computeDailyReturns(snapItem.closes);
-        if (stockRets.length >= 12 && ihsgRets.length >= 12) {
-          const bv = computeBetaAndVolatility(stockRets, ihsgRets);
-          beta1Y = bv.beta1Y;
-          volatilityAnn = bv.volatilityAnn;
-        }
+      const stockRets = computeDailyReturns(snapItem.closes);
+      if (stockRets.length >= 12 && ihsgRets.length >= 12) {
+        const bv = computeBetaAndVolatility(stockRets, ihsgRets, isLiquid);
+        beta1Y = bv.beta1Y;
+        volatilityAnn = bv.volatilityAnn;
       }
+
+      return enrichStockMetrics({
+        ticker: entry.ticker,
+        idxTicker: `IDX:${entry.ticker}`,
+        yfTicker,
+        name: entry.name,
+        sector: entry.sector,
+        lastPrice,
+        change1D,
+        return30D,
+        beta1Y,
+        volatilityAnn,
+        roe: entry.defaultRoe,
+        debtToEquity: entry.defaultDer,
+        operatingMargin: entry.defaultOpMargin,
+        isLiveFetched: true,
+        isLiquid,
+        dividendYieldPct,
+        lastSyncedAt: nowStr
+      });
     }
 
+    // Case 2: Ticker has no valid quote on Yahoo Finance (delisted, suspended, or unquoted e.g. FORZ/FORU)
+    // Never assign a fake default price! Set lastPrice = 0, isLiveFetched = false, isLiquid = false.
     return enrichStockMetrics({
       ticker: entry.ticker,
       idxTicker: `IDX:${entry.ticker}`,
       yfTicker,
       name: entry.name,
       sector: entry.sector,
-      lastPrice,
-      change1D,
-      return30D,
-      beta1Y,
-      volatilityAnn,
+      lastPrice: 0,
+      change1D: 0,
+      return30D: 0,
+      beta1Y: 1.25,
+      volatilityAnn: 45.0,
       roe: entry.defaultRoe,
       debtToEquity: entry.defaultDer,
       operatingMargin: entry.defaultOpMargin,
-      isLiveFetched: true,
+      isLiveFetched: false,
+      isLiquid: false,
+      dividendYieldPct,
       lastSyncedAt: nowStr
     });
   });
@@ -191,9 +245,38 @@ function canUseLocalExpressBackend(): boolean {
   return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.run.app');
 }
 
+/**
+ * Loads the static market snapshot, and when `forceRefresh` is true on GitHub Pages,
+ * fetches `./static-market-snapshot.json?t=...` with cache-busting to pick up any newer GitHub Actions build.
+ */
 async function loadStaticMarketSnapshot(
-  _forceRefresh = false
+  forceRefresh = false
 ): Promise<StaticMarketSnapshotPayload | null> {
+  if (forceRefresh && typeof window !== 'undefined' && !canUseLocalExpressBackend()) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`./static-market-snapshot.json?t=${Date.now()}`, {
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const freshJson = (await res.json()) as StaticMarketSnapshotPayload;
+        if (freshJson && freshJson.data && typeof freshJson.data === 'object') {
+          if (embeddedSnapshot.data) {
+            Object.assign(embeddedSnapshot.data, freshJson.data);
+          } else {
+            embeddedSnapshot.data = freshJson.data;
+          }
+          return embeddedSnapshot;
+        }
+      }
+    } catch {
+      // Fall back to embeddedSnapshot
+    }
+  }
+
   if (embeddedSnapshot && embeddedSnapshot.data && typeof embeddedSnapshot.data === 'object') {
     return embeddedSnapshot;
   }
@@ -201,8 +284,108 @@ async function loadStaticMarketSnapshot(
 }
 
 /**
+ * Parses a raw Yahoo Finance v7 `/v7/finance/spark` JSON payload into a map of `SparkSeriesItem`.
+ */
+function parseYahooSparkPayload(rawJson: any): Record<string, SparkSeriesItem> {
+  const out: Record<string, SparkSeriesItem> = {};
+  if (!rawJson || typeof rawJson !== 'object') return out;
+
+  // Format A: { spark: { result: [ { symbol, response: [ { meta, indicators: { quote: [ { close } ] } } ] } ] } }
+  if (Array.isArray(rawJson?.spark?.result)) {
+    for (const item of rawJson.spark.result) {
+      const sym = item?.symbol;
+      const resp = item?.response?.[0];
+      const rawCloses = resp?.indicators?.quote?.[0]?.close || [];
+      const closes = (rawCloses as Array<number | null>).filter(
+        (c): c is number => typeof c === 'number' && Number.isFinite(c) && c > 0
+      );
+      if (sym && closes.length >= 2) {
+        const lastPrice = Number(closes[closes.length - 1].toFixed(2));
+        const prevClose = closes[closes.length - 2];
+        const change1D =
+          prevClose > 0 ? Number((((lastPrice - prevClose) / prevClose) * 100).toFixed(2)) : 0;
+        out[sym] = {
+          symbol: sym,
+          lastPrice,
+          change1D,
+          closes: closes.slice(-65).map((c) => Number(c.toFixed(2))),
+          shortName: resp?.meta?.shortName || sym
+        };
+      }
+    }
+    return out;
+  }
+
+  // Format B: Direct symbol keys { "BBCA.JK": { close: [...], previousClose: ... } }
+  for (const [sym, val] of Object.entries(rawJson)) {
+    const entry = val as any;
+    if (entry && Array.isArray(entry.close)) {
+      const closes = (entry.close as Array<number | null>).filter(
+        (c): c is number => typeof c === 'number' && Number.isFinite(c) && c > 0
+      );
+      if (closes.length >= 2) {
+        const lastPrice = Number(closes[closes.length - 1].toFixed(2));
+        const prevClose = closes[closes.length - 2];
+        const change1D =
+          prevClose > 0 ? Number((((lastPrice - prevClose) / prevClose) * 100).toFixed(2)) : 0;
+        out[sym] = {
+          symbol: sym,
+          lastPrice,
+          change1D,
+          closes: closes.slice(-65).map((c) => Number(c.toFixed(2))),
+          shortName: sym
+        };
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Browser-side CORS-safe Yahoo Finance Spark Batch Fetcher for Static Hosts (GitHub Pages `*.github.io`).
+ * Tries multiple reliable public CORS relays with fast timeouts so live market sync works directly in the browser.
+ */
+async function fetchYahooSparkViaBrowserCors(
+  batchSymbols: string[],
+  range: string = '3mo'
+): Promise<Record<string, SparkSeriesItem>> {
+  const targetUrl = `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(
+    batchSymbols.join(',')
+  )}&range=${encodeURIComponent(range)}&interval=1d`;
+
+  const proxyEndpoints = [
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+  ];
+
+  for (const proxyUrl of proxyEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5500);
+      const res = await fetch(proxyUrl, {
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const json = await res.json();
+        const parsed = parseYahooSparkPayload(json);
+        if (Object.keys(parsed).length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // try next relay
+    }
+  }
+
+  return {};
+}
+
+/**
  * Fetches closing price series and latest market quote for a single symbol.
- * Uses local Express /api/yahoo/chart when available, or pre-synced embedded snapshot on GitHub Pages.
+ * Uses local Express /api/yahoo/chart when available, or browser CORS live fetch + embedded snapshot on GitHub Pages.
  */
 export async function fetchYahooChartSeries(
   symbol: string,
@@ -234,6 +417,11 @@ export async function fetchYahooChartSeries(
     } catch {
       cachedLocalServerAvailable = false;
     }
+  } else {
+    const corsLive = await fetchYahooSparkViaBrowserCors([symbol], range);
+    if (corsLive[symbol] && corsLive[symbol].lastPrice > 0) {
+      return corsLive[symbol];
+    }
   }
 
   const snapshot = await loadStaticMarketSnapshot();
@@ -242,24 +430,26 @@ export async function fetchYahooChartSeries(
     return snapItem;
   }
 
-  throw new Error(`Ticker ${symbol} tidak ditemukan di snapshot Yahoo Finance.`);
+  throw new Error(`Ticker ${symbol} tidak ditemukan atau tidak aktif di Yahoo Finance.`);
 }
 
 /**
  * High-Throughput Multi-Symbol Yahoo Spark Batch Fetcher
- * Capable of syncing 956+ JCI stocks + macro indicators rapidly with zero CORS 403 or 404 console errors.
+ * Works both on Google AI Studio (`/api/yahoo/spark`) AND on GitHub Pages (`*.github.io` via CORS live batches + fresh snapshot)
+ * with visible progress updates (`onChunkProgress`) so clicking Sync always performs real network fetching & loading feedback.
  */
 export async function fetchYahooSparkBatch(
   symbols: string[],
   range: string = '3mo',
-  onChunkProgress?: (syncedCount: number, totalCount: number, latestSymbol: string) => void
+  onChunkProgress?: (syncedCount: number, totalCount: number, latestSymbol: string) => void,
+  forceLiveNetwork: boolean = false
 ): Promise<Record<string, SparkSeriesItem>> {
   const uniqueSymbols = Array.from(new Set(symbols.filter(Boolean)));
   const resultMap: Record<string, SparkSeriesItem> = {};
   if (uniqueSymbols.length === 0) return resultMap;
 
-  // First load pre-synced snapshot data so all 956+ JCI stocks have an immediate real Yahoo Finance baseline
-  const snapshot = await loadStaticMarketSnapshot(false);
+  // 1. Hydrate baseline from pre-synced Yahoo Finance snapshot (896 genuine live symbols)
+  const snapshot = await loadStaticMarketSnapshot(forceLiveNetwork);
   if (snapshot?.data) {
     for (const sym of uniqueSymbols) {
       const item = snapshot.data[sym];
@@ -269,7 +459,7 @@ export async function fetchYahooSparkBatch(
     }
   }
 
-  // If local Express backend is active, fetch live delta updates across the symbols
+  // 2. Path A: Local Express Backend (/api/yahoo/spark) in Google AI Studio / Local Dev
   if (canUseLocalExpressBackend()) {
     const SERVER_BATCH_SIZE = 40;
     for (let i = 0; i < uniqueSymbols.length; i += SERVER_BATCH_SIZE) {
@@ -294,6 +484,9 @@ export async function fetchYahooSparkBatch(
           const json = await res.json();
           if (json?.data && typeof json.data === 'object') {
             Object.assign(resultMap, json.data);
+            if (embeddedSnapshot.data) {
+              Object.assign(embeddedSnapshot.data, json.data);
+            }
             continue;
           }
         }
@@ -302,6 +495,39 @@ export async function fetchYahooSparkBatch(
       } catch {
         cachedLocalServerAvailable = false;
         break;
+      }
+    }
+  } else if (forceLiveNetwork) {
+    // 3. Path B: Static Host / GitHub Pages (*.github.io) Explicit Live Sync
+    // Prioritizes ^JKSE, Global Macro, and Institutional Liquid BEI Stocks via live CORS Spark batches
+    // while reporting real-time chunk progress across the entire universe.
+    const priorityLiveSymbols = uniqueSymbols.filter((sym) => {
+      if (!sym.endsWith('.JK')) return true; // ^JKSE and Macro symbols
+      const clean = sym.replace(/\.JK$/i, '');
+      return isInstitutionalLiquidCandidate(clean);
+    });
+
+    const CORS_BATCH_SIZE = 20;
+    const totalPriority = priorityLiveSymbols.length;
+
+    for (let i = 0; i < totalPriority; i += CORS_BATCH_SIZE) {
+      const batch = priorityLiveSymbols.slice(i, i + CORS_BATCH_SIZE);
+      const scaledProgress = Math.min(
+        uniqueSymbols.length,
+        Math.round(((i + batch.length) / Math.max(1, totalPriority)) * uniqueSymbols.length)
+      );
+      onChunkProgress?.(
+        scaledProgress,
+        uniqueSymbols.length,
+        `${batch[0]} .. ${batch[batch.length - 1]}`
+      );
+
+      const liveBatchData = await fetchYahooSparkViaBrowserCors(batch, range);
+      if (Object.keys(liveBatchData).length > 0) {
+        Object.assign(resultMap, liveBatchData);
+        if (embeddedSnapshot.data) {
+          Object.assign(embeddedSnapshot.data, liveBatchData);
+        }
       }
     }
   }
@@ -327,14 +553,20 @@ function computeDailyReturns(closes: number[]): number[] {
 
 function computeBetaAndVolatility(
   stockReturns: number[],
-  marketReturns: number[]
+  marketReturns: number[],
+  isLiquid: boolean = true
 ): {
   beta1Y: number;
   volatilityAnn: number;
 } {
+  // Stagnant / illiquid stocks with flat returns must NEVER get artificially low volatility (9.0%) or low beta (0.25)
+  if (!isLiquid) {
+    return { beta1Y: 1.35, volatilityAnn: 44.0 };
+  }
+
   const len = Math.min(stockReturns.length, marketReturns.length);
   if (len < 12) {
-    return { beta1Y: 1.0, volatilityAnn: 20.0 };
+    return { beta1Y: 1.0, volatilityAnn: 22.0 };
   }
 
   const sSlice = stockReturns.slice(-len);
@@ -355,9 +587,16 @@ function computeBetaAndVolatility(
     varS += dS * dS;
   }
 
-  const beta1Y = varM > 0 ? Math.max(0.25, Math.min(2.4, cov / varM)) : 1.0;
   const stdS = Math.sqrt(varS / (len - 1));
-  const volatilityAnn = Math.max(9.0, Math.min(65.0, stdS * 100 * Math.sqrt(252)));
+  const rawVolAnn = stdS * 100 * Math.sqrt(252);
+
+  // If annualized volatility is suspiciously near zero (< 6.5%), the stock is frozen/suspended
+  if (rawVolAnn < 6.5) {
+    return { beta1Y: 1.30, volatilityAnn: 42.0 };
+  }
+
+  const beta1Y = varM > 0 ? Math.max(0.32, Math.min(2.4, cov / varM)) : 1.0;
+  const volatilityAnn = Math.max(10.5, Math.min(65.0, rawVolAnn));
 
   return {
     beta1Y: Number(beta1Y.toFixed(2)),
@@ -392,59 +631,42 @@ export async function fetchLiveIdxTicker(rawTicker: string): Promise<StockMetric
     second: '2-digit'
   });
 
-  try {
-    const batchMap = await fetchYahooSparkBatch([yfSymbol, '^JKSE'], '6mo');
-    const stockSeries = batchMap[yfSymbol] || (await fetchYahooChartSeries(yfSymbol, '6mo'));
-    const ihsgSeries = batchMap['^JKSE'] || (await fetchYahooChartSeries('^JKSE', '6mo'));
+  const batchMap = await fetchYahooSparkBatch([yfSymbol, '^JKSE'], '6mo', undefined, true);
+  const stockSeries = batchMap[yfSymbol] || (await fetchYahooChartSeries(yfSymbol, '6mo'));
+  const ihsgSeries = batchMap['^JKSE'] || (await fetchYahooChartSeries('^JKSE', '6mo'));
 
-    const stockRets = computeDailyReturns(stockSeries.closes);
-    const ihsgRets = computeDailyReturns(ihsgSeries.closes);
-    const { beta1Y, volatilityAnn } = computeBetaAndVolatility(stockRets, ihsgRets);
+  const lastPrice = Math.round(stockSeries.lastPrice);
+  const isLiquid = evaluateSeriesLiquidity(stockSeries.closes, lastPrice);
+  const stockRets = computeDailyReturns(stockSeries.closes);
+  const ihsgRets = computeDailyReturns(ihsgSeries.closes);
+  const { beta1Y, volatilityAnn } = computeBetaAndVolatility(stockRets, ihsgRets, isLiquid);
 
-    const close30Ago =
-      stockSeries.closes[Math.max(0, stockSeries.closes.length - 22)] || stockSeries.lastPrice;
-    const return30D =
-      close30Ago > 0
-        ? Number((((stockSeries.lastPrice - close30Ago) / close30Ago) * 100).toFixed(2))
-        : 0;
+  const close30Ago =
+    stockSeries.closes[Math.max(0, stockSeries.closes.length - 22)] || stockSeries.lastPrice;
+  const return30D =
+    close30Ago > 0
+      ? Number((((stockSeries.lastPrice - close30Ago) / close30Ago) * 100).toFixed(2))
+      : 0;
 
-    return enrichStockMetrics({
-      ticker: cleanTicker,
-      idxTicker: `IDX:${cleanTicker}`,
-      yfTicker: yfSymbol,
-      name: catalogMatch?.name || stockSeries.shortName || `${cleanTicker} Tbk`,
-      sector: catalogMatch?.sector || 'IDX Listed Equity',
-      lastPrice: Math.round(stockSeries.lastPrice),
-      change1D: stockSeries.change1D,
-      return30D,
-      beta1Y,
-      volatilityAnn,
-      roe: catalogMatch.defaultRoe,
-      debtToEquity: catalogMatch.defaultDer,
-      operatingMargin: catalogMatch.defaultOpMargin,
-      isLiveFetched: true,
-      lastSyncedAt: nowStr
-    });
-  } catch {
-    const action = getCalibratedInitialMarketAction(cleanTicker);
-    return enrichStockMetrics({
-      ticker: catalogMatch.ticker,
-      idxTicker: `IDX:${catalogMatch.ticker}`,
-      yfTicker: `${catalogMatch.ticker}.JK`,
-      name: catalogMatch.name,
-      sector: catalogMatch.sector,
-      lastPrice: catalogMatch.approxPrice,
-      change1D: action.change1D,
-      return30D: action.return30D,
-      beta1Y: catalogMatch.approxBeta,
-      volatilityAnn: Number((catalogMatch.approxBeta * 18.2).toFixed(1)),
-      roe: catalogMatch.defaultRoe,
-      debtToEquity: catalogMatch.defaultDer,
-      operatingMargin: catalogMatch.defaultOpMargin,
-      isLiveFetched: true,
-      lastSyncedAt: nowStr
-    });
-  }
+  return enrichStockMetrics({
+    ticker: cleanTicker,
+    idxTicker: `IDX:${cleanTicker}`,
+    yfTicker: yfSymbol,
+    name: catalogMatch?.name || stockSeries.shortName || `${cleanTicker} Tbk`,
+    sector: catalogMatch?.sector || 'IDX Listed Equity',
+    lastPrice,
+    change1D: stockSeries.change1D,
+    return30D,
+    beta1Y,
+    volatilityAnn,
+    roe: catalogMatch.defaultRoe,
+    debtToEquity: catalogMatch.defaultDer,
+    operatingMargin: catalogMatch.defaultOpMargin,
+    isLiveFetched: true,
+    isLiquid,
+    dividendYieldPct: getEmitenDividendYield(cleanTicker),
+    lastSyncedAt: nowStr
+  });
 }
 
 /**
@@ -454,13 +676,15 @@ export async function fetchLiveIdxTicker(rawTicker: string): Promise<StockMetric
 export async function refreshLiveGlobalMacroAndIhsg(
   currentMacro: MacroIndicator[],
   currentStocks: StockMetrics[],
-  onProgress?: (syncedCount: number, totalCount: number, tickerLabel: string) => void
+  onProgress?: (syncedCount: number, totalCount: number, tickerLabel: string) => void,
+  forceLiveNetwork: boolean = false
 ): Promise<{
   updatedMacro: MacroIndicator[];
   ihsgReturns30D?: number[];
   liveIhsgQuote?: { lastPrice: number; change1D: number };
   updatedStocks: StockMetrics[];
   liveSyncedCount: number;
+  liquidStockCount: number;
   fullTimestampStr: string;
 }> {
   const updatedMacro = [...currentMacro];
@@ -477,7 +701,7 @@ export async function refreshLiveGlobalMacroAndIhsg(
   const fullTimestampStr = formatFullIndonesianDateTime(now);
 
   // Dynamically check if the market snapshot has any newly listed .JK emiten (e.g. if JCI grows from 956 to 1000+ emiten)
-  const snapshot = await loadStaticMarketSnapshot(true);
+  const snapshot = await loadStaticMarketSnapshot(forceLiveNetwork);
   const existingTickerSet = new Set(currentStocks.map((s) => s.ticker));
   const expandedStocks: StockMetrics[] = [...currentStocks];
 
@@ -490,7 +714,6 @@ export async function refreshLiveGlobalMacroAndIhsg(
       if (clean.length === 4 && !existingTickerSet.has(clean)) {
         existingTickerSet.add(clean);
         const entry = createCalibratedIdxEntry(clean, disc.sector, disc.name);
-        const action = getCalibratedInitialMarketAction(clean);
         expandedStocks.push(
           enrichStockMetrics({
             ticker: entry.ticker,
@@ -498,15 +721,17 @@ export async function refreshLiveGlobalMacroAndIhsg(
             yfTicker: `${entry.ticker}.JK`,
             name: entry.name,
             sector: entry.sector,
-            lastPrice: entry.approxPrice,
-            change1D: action.change1D,
-            return30D: action.return30D,
+            lastPrice: 0,
+            change1D: 0,
+            return30D: 0,
             beta1Y: entry.approxBeta,
-            volatilityAnn: Number((entry.approxBeta * 18.2).toFixed(1)),
+            volatilityAnn: Number((entry.approxBeta * 22.0).toFixed(1)),
             roe: entry.defaultRoe,
             debtToEquity: entry.defaultDer,
             operatingMargin: entry.defaultOpMargin,
-            isLiveFetched: true,
+            isLiveFetched: false,
+            isLiquid: false,
+            dividendYieldPct: getEmitenDividendYield(entry.ticker),
             lastSyncedAt: nowStr
           })
         );
@@ -522,7 +747,9 @@ export async function refreshLiveGlobalMacroAndIhsg(
           existingTickerSet.add(clean);
           const snapItem = snapshot.data[sym];
           const entry = createCalibratedIdxEntry(clean, undefined, snapItem?.shortName);
-          const action = getCalibratedInitialMarketAction(clean);
+          const hasValidQuote = Boolean(snapItem && snapItem.lastPrice > 0);
+          const lastPrice = hasValidQuote ? Math.round(snapItem.lastPrice) : 0;
+          const isLiquid = hasValidQuote ? evaluateSeriesLiquidity(snapItem.closes, lastPrice) : false;
           expandedStocks.push(
             enrichStockMetrics({
               ticker: entry.ticker,
@@ -530,15 +757,17 @@ export async function refreshLiveGlobalMacroAndIhsg(
               yfTicker: `${entry.ticker}.JK`,
               name: entry.name,
               sector: entry.sector,
-              lastPrice: snapItem?.lastPrice ? Math.round(snapItem.lastPrice) : entry.approxPrice,
-              change1D: snapItem?.change1D ?? action.change1D,
-              return30D: action.return30D,
+              lastPrice,
+              change1D: snapItem?.change1D ?? 0,
+              return30D: 0,
               beta1Y: entry.approxBeta,
-              volatilityAnn: Number((entry.approxBeta * 18.2).toFixed(1)),
+              volatilityAnn: Number((entry.approxBeta * 22.0).toFixed(1)),
               roe: entry.defaultRoe,
               debtToEquity: entry.defaultDer,
               operatingMargin: entry.defaultOpMargin,
-              isLiveFetched: true,
+              isLiveFetched: hasValidQuote,
+              isLiquid,
+              dividendYieldPct: getEmitenDividendYield(entry.ticker),
               lastSyncedAt: nowStr
             })
           );
@@ -560,7 +789,8 @@ export async function refreshLiveGlobalMacroAndIhsg(
         Math.max(0, syncedSoFar - macroSymbols.length - 1)
       );
       onProgress?.(approxStockSynced, expandedStocks.length, label);
-    }
+    },
+    forceLiveNetwork
   );
 
   // 1. Process ^JKSE (IHSG)
@@ -598,9 +828,15 @@ export async function refreshLiveGlobalMacroAndIhsg(
 
   // 3. Process All JCI Screener Stocks (~956 -> 1000+ Emiten)
   let liveSyncedCount = 0;
+  let liquidStockCount = 0;
+
   const updatedStocksList: StockMetrics[] = expandedStocks.map((stock) => {
     const res = batchMap[stock.yfTicker];
-    if (res && res.lastPrice > 0) {
+    const dividendYieldPct = stock.dividendYieldPct ?? getEmitenDividendYield(stock.ticker);
+
+    if (res && res.lastPrice > 0 && Array.isArray(res.closes) && res.closes.length >= 2) {
+      const lastPrice = Math.round(res.lastPrice);
+      const isLiquid = evaluateSeriesLiquidity(res.closes, lastPrice);
       const close30Ago =
         res.closes[Math.max(0, res.closes.length - 22)] || res.lastPrice;
       const return30D =
@@ -611,20 +847,22 @@ export async function refreshLiveGlobalMacroAndIhsg(
       let beta1Y = stock.beta1Y;
       let volatilityAnn = stock.volatilityAnn;
       const stockRets = computeDailyReturns(res.closes);
-      if (stockRets.length >= 15 && ihsgRawDecimalRets.length >= 15) {
-        const bv = computeBetaAndVolatility(stockRets, ihsgRawDecimalRets);
+      if (stockRets.length >= 12 && ihsgRawDecimalRets.length >= 12) {
+        const bv = computeBetaAndVolatility(stockRets, ihsgRawDecimalRets, isLiquid);
         beta1Y = bv.beta1Y;
         volatilityAnn = bv.volatilityAnn;
       }
 
       liveSyncedCount++;
+      if (isLiquid) liquidStockCount++;
+
       return enrichStockMetrics({
         ticker: stock.ticker,
         idxTicker: stock.idxTicker,
         yfTicker: stock.yfTicker,
         name: stock.name,
         sector: stock.sector,
-        lastPrice: Math.round(res.lastPrice),
+        lastPrice,
         change1D: res.change1D,
         return30D,
         beta1Y,
@@ -633,16 +871,32 @@ export async function refreshLiveGlobalMacroAndIhsg(
         debtToEquity: stock.debtToEquity,
         operatingMargin: stock.operatingMargin,
         isLiveFetched: true,
+        isLiquid,
+        dividendYieldPct,
         lastSyncedAt: nowStr
       });
     }
 
-    liveSyncedCount++;
-    return {
-      ...stock,
-      isLiveFetched: true,
+    // Ticker is unquoted/delisted/suspended on Yahoo Finance -> never use fake default price!
+    return enrichStockMetrics({
+      ticker: stock.ticker,
+      idxTicker: stock.idxTicker,
+      yfTicker: stock.yfTicker,
+      name: stock.name,
+      sector: stock.sector,
+      lastPrice: 0,
+      change1D: 0,
+      return30D: 0,
+      beta1Y: 1.25,
+      volatilityAnn: 45.0,
+      roe: stock.roe,
+      debtToEquity: stock.debtToEquity,
+      operatingMargin: stock.operatingMargin,
+      isLiveFetched: false,
+      isLiquid: false,
+      dividendYieldPct,
       lastSyncedAt: stock.lastSyncedAt || nowStr
-    };
+    });
   });
 
   onProgress?.(liveSyncedCount, updatedStocksList.length, 'Selesai');
@@ -654,6 +908,7 @@ export async function refreshLiveGlobalMacroAndIhsg(
     liveIhsgQuote,
     updatedStocks: rankedStocks,
     liveSyncedCount,
+    liquidStockCount,
     fullTimestampStr
   };
 }

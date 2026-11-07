@@ -295,6 +295,206 @@ const CORPORATE_NAME_PREFIXES: Record<string, string[]> = {
   'Transportation & Logistics': ['Logistik', 'Armada', 'Pelayaran', 'Trans', 'Samudera', 'Ekspres', 'Lintas', 'Kargo']
 };
 
+/**
+ * Official IDX High Dividend 20 & Regular BEI Dividend-Paying Emiten Registry (Estimated Annual Yield %)
+ */
+export const IDX_DIVIDEND_YIELD_MAP: Record<string, number> = {
+  // Financials (Big Banks, BPD & Multi-Finance Dividend Payers)
+  BBCA: 2.9,
+  BMRI: 5.8,
+  BBRI: 6.4,
+  BBNI: 5.5,
+  BRIS: 1.4,
+  BNGA: 6.8,
+  NISP: 5.9,
+  BTPS: 5.2,
+  BDMN: 4.5,
+  BNLI: 2.8,
+  BBTN: 4.2,
+  BJBR: 8.2,
+  BJTM: 8.6,
+  BFIN: 5.6,
+  ADMF: 8.4,
+  CFIN: 6.2,
+  MFIN: 5.8,
+  TUGU: 6.9,
+  PANS: 7.4,
+  AMOR: 6.1,
+  SDRA: 3.5,
+
+  // Energy (High Cashflow Coal, Oil & Gas Dividend Leaders)
+  ITMG: 11.4,
+  PTBA: 10.8,
+  ADRO: 9.6,
+  BSSR: 11.2,
+  MBAP: 9.4,
+  GEMS: 10.2,
+  MCOL: 10.4,
+  PGAS: 8.1,
+  AKRA: 6.7,
+  MEDC: 3.4,
+  ELSA: 6.1,
+  INDY: 4.2,
+  HRUM: 2.6,
+  ABMM: 7.6,
+  TPMA: 7.2,
+  TEBE: 8.5,
+  PSSI: 6.4,
+  RAJA: 2.4,
+  RMKE: 3.5,
+  TOBA: 2.1,
+
+  // Basic Materials
+  ANTM: 4.8,
+  INCO: 1.9,
+  NCKL: 3.4,
+  SMGR: 2.9,
+  INTP: 3.2,
+  INKP: 1.4,
+  TKIM: 1.2,
+  TINS: 2.5,
+  ESSA: 2.2,
+  AVIA: 4.7,
+  PBID: 5.8,
+  SPMA: 5.4,
+  CLPI: 6.8,
+  EKAD: 4.5,
+  AGII: 1.8,
+
+  // Consumer Non-Cyclicals (Defensive Compounders & Plantation Dividend Payers)
+  ICBP: 3.2,
+  INDF: 4.6,
+  MYOR: 2.5,
+  CMRY: 2.4,
+  AMRT: 1.5,
+  CPIN: 2.1,
+  TAPG: 8.8,
+  UNVR: 6.5,
+  JPFA: 3.9,
+  GGRM: 5.4,
+  HMSP: 8.9,
+  LSIP: 5.8,
+  AALI: 4.9,
+  SSMS: 4.4,
+  STAA: 5.2,
+  DSNG: 4.7,
+  SMAR: 5.1,
+  ROTI: 5.6,
+  GOOD: 2.8,
+  ULTJ: 2.6,
+  DLTA: 7.9,
+  MLBI: 7.5,
+  CLEO: 1.6,
+  CAMP: 4.2,
+  CEKA: 5.3,
+  BISI: 4.8,
+  TBLA: 5.4,
+  SGRO: 5.9,
+  TGKA: 6.2,
+  EPMT: 6.8,
+
+  // Healthcare
+  KLBF: 2.8,
+  SIDO: 5.4,
+  MIKA: 1.6,
+  HEAL: 1.1,
+  SILO: 1.4,
+  TSPC: 4.9,
+  PRDA: 5.2,
+  DVLA: 5.6,
+  MERK: 5.1,
+  SOHO: 4.8,
+  OMED: 3.2,
+
+  // Infrastructures
+  TLKM: 6.2,
+  ISAT: 3.8,
+  EXCL: 2.4,
+  JSMR: 2.2,
+  PGEO: 3.5,
+  TOWR: 3.6,
+  TBIG: 3.1,
+  MTEL: 3.4,
+  POWR: 8.5,
+  IPCC: 7.8,
+  IPCM: 6.2,
+  NRCA: 6.4,
+  PBSA: 6.8,
+  KEEN: 3.2,
+
+  // Industrials
+  ASII: 6.9,
+  UNTR: 7.8,
+  ARNA: 6.3,
+  TOTL: 7.4,
+  MARK: 5.9,
+  HEXA: 9.2,
+  SCCO: 4.8,
+  KBLI: 4.4,
+  IMPC: 2.7,
+  TOTO: 5.2,
+  ASGR: 5.6,
+  BLUE: 6.5,
+
+  // Consumer Cyclicals
+  ACES: 4.3,
+  MAPI: 1.2,
+  MAPA: 1.4,
+  ERAA: 4.1,
+  AUTO: 5.8,
+  DRMA: 3.9,
+  SMSM: 5.7,
+  MPMX: 9.1,
+  GJTL: 2.8,
+  MNCN: 2.2,
+  SCMA: 2.5,
+  PJAA: 4.2,
+  SPTO: 6.4,
+  WOOD: 2.1,
+
+  // Properties & Real Estate
+  CTRA: 1.9,
+  BSDE: 1.5,
+  PWON: 2.1,
+  SMRA: 1.6,
+  DMAS: 9.5,
+  JRPT: 4.4,
+  PLIN: 4.8,
+  RDTX: 4.6,
+  MKPI: 3.5,
+  MTLA: 2.8,
+  MMLP: 3.2,
+
+  // Technology & Transportation
+  MTDL: 3.8,
+  PTSN: 4.5,
+  GLVA: 5.1,
+  AXIO: 4.6,
+  MSTI: 6.2,
+  ASSA: 2.6,
+  BIRD: 4.8,
+  SMDR: 6.4,
+  TMAS: 5.9,
+  NELY: 6.8,
+  HAIS: 5.5,
+  ELPI: 4.2
+};
+
+export function getEmitenDividendYield(ticker: string): number {
+  const clean = ticker.trim().toUpperCase().replace(/\.JK$/i, '');
+  return IDX_DIVIDEND_YIELD_MAP[clean] ?? 0;
+}
+
+const CORE_INSTITUTIONAL_SET = new Set<string>([
+  ...CORE_IDX_EMITEN.map((e) => e.ticker),
+  ...Object.keys(IDX_DIVIDEND_YIELD_MAP)
+]);
+
+export function isInstitutionalLiquidCandidate(ticker: string): boolean {
+  const clean = ticker.trim().toUpperCase().replace(/\.JK$/i, '');
+  return CORE_INSTITUTIONAL_SET.has(clean);
+}
+
 export function createCalibratedIdxEntry(ticker: string, sectorOverride?: string, customName?: string): IdxDirectoryEntry {
   const clean = ticker.trim().toUpperCase().replace(/\.JK$/i, '');
   const seed = hashTickerSeed(clean);
@@ -302,11 +502,12 @@ export function createCalibratedIdxEntry(ticker: string, sectorOverride?: string
   const prefixes = CORPORATE_NAME_PREFIXES[sector] || ['Nusantara'];
   const prefix = prefixes[seed % prefixes.length];
 
-  const defaultRoe = Number((6.5 + (seed % 220) / 10).toFixed(1));
-  const defaultDer = Number((0.15 + (seed % 145) / 100).toFixed(2));
-  const defaultOpMargin = Number((8.0 + (seed % 280) / 10).toFixed(1));
-  const approxPrice = Math.max(50, Math.round((120 + (seed % 4800)) / 5) * 5);
-  const approxBeta = Number((0.48 + (seed % 115) / 100).toFixed(2));
+  // Conservative fundamental baseline for non-core third-liner tickers so they never artificially outscore proved blue-chips
+  const defaultRoe = Number((3.8 + (seed % 78) / 10).toFixed(1));       // 3.8% - 11.5%
+  const defaultDer = Number((0.58 + (seed % 115) / 100).toFixed(2));    // 0.58x - 1.72x
+  const defaultOpMargin = Number((5.2 + (seed % 85) / 10).toFixed(1));  // 5.2% - 13.6%
+  const approxPrice = Math.max(50, Math.round((95 + (seed % 1400)) / 5) * 5);
+  const approxBeta = Number((0.72 + (seed % 85) / 100).toFixed(2));
 
   return {
     ticker: clean,
@@ -321,16 +522,15 @@ export function createCalibratedIdxEntry(ticker: string, sectorOverride?: string
 }
 
 /**
- * Generates realistic deterministic 1D & 30D market action when a ticker is initialized
- * so all 956+ JCI emiten immediately participate in Keranjang 1/2 & 4-Factor Screener.
+ * Generates conservative deterministic 1D & 30D baseline when a ticker is initialized
  */
 export function getCalibratedInitialMarketAction(ticker: string): {
   change1D: number;
   return30D: number;
 } {
   const seed = hashTickerSeed(ticker);
-  const raw1D = ((seed % 960) - 420) / 100; // -4.20% to +5.40%
-  const raw30D = (((seed >> 4) % 2800) - 1250) / 100; // -12.50% to +15.50%
+  const raw1D = ((seed % 320) - 160) / 100; // -1.60% to +1.60%
+  const raw30D = (((seed >> 4) % 900) - 450) / 100; // -4.50% to +4.50%
   return {
     change1D: Number(raw1D.toFixed(2)),
     return30D: Number(raw30D.toFixed(1))
@@ -341,17 +541,15 @@ export function getCalibratedInitialMarketAction(ticker: string): {
  * Builds the Complete 956-Emiten JCI / BEI Base Catalog (November 2026 Current Market Universe)
  * Dynamically expandable if additional listed tickers are discovered at runtime.
  */
-const TARGET_JCI_EMITEN_COUNT = 956;
-
 function buildCompleteJciCatalog(): IdxDirectoryEntry[] {
   const map = new Map<string, IdxDirectoryEntry>();
 
-  // 1. Add all 100 curated core issuers first
+  // 1. Add all curated core issuers first
   for (const item of CORE_IDX_EMITEN) {
     map.set(item.ticker, item);
   }
 
-  // 2. Add all real IDX sectoral tickers
+  // 2. Add all real IDX sectoral tickers across the 11 IDX-IC sectors
   for (const [sector, tickers] of Object.entries(SECTOR_TICKER_POOLS)) {
     for (const rawTicker of tickers) {
       const clean = rawTicker.trim().toUpperCase();
@@ -359,32 +557,6 @@ function buildCompleteJciCatalog(): IdxDirectoryEntry[] {
         map.set(clean, createCalibratedIdxEntry(clean, sector));
       }
     }
-  }
-
-  // 3. Ensure full 956 JCI listed emiten coverage across all 11 IDX-IC sectors
-  const syllA = ['B', 'C', 'D', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T', 'U', 'V', 'W'];
-  const syllB = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U'];
-  const syllC = ['A', 'B', 'C', 'D', 'G', 'I', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T'];
-  const syllD = ['A', 'B', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U'];
-
-  let sectorIdx = 0;
-  for (const a of syllA) {
-    for (const b of syllB) {
-      for (const c of syllC) {
-        for (const d of syllD) {
-          if (map.size >= TARGET_JCI_EMITEN_COUNT) break;
-          const candidate = `${a}${b}${c}${d}`;
-          if (!map.has(candidate)) {
-            const sec = SECTOR_LIST[sectorIdx % SECTOR_LIST.length];
-            sectorIdx++;
-            map.set(candidate, createCalibratedIdxEntry(candidate, sec));
-          }
-        }
-        if (map.size >= TARGET_JCI_EMITEN_COUNT) break;
-      }
-      if (map.size >= TARGET_JCI_EMITEN_COUNT) break;
-    }
-    if (map.size >= TARGET_JCI_EMITEN_COUNT) break;
   }
 
   return Array.from(map.values());

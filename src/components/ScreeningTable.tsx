@@ -47,6 +47,9 @@ export function ScreeningTable({
   const [sortField, setSortField] = useState<SortField>('dmuCompositeScore');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [zoneFilter, setZoneFilter] = useState<'ALL' | DeMiguelBufferZone>('ALL');
+  const [qualityFilter, setQualityFilter] = useState<
+    'ALL' | 'LIQUID_ONLY' | 'DIVIDEND_ONLY' | 'ILLIQUID_ONLY'
+  >('ALL');
   const [sectorFilter, setSectorFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pageSize, setPageSize] = useState<number>(100);
@@ -79,6 +82,21 @@ export function ScreeningTable({
     [rankedStocks]
   );
 
+  const liquidStockCount = useMemo(
+    () => rankedStocks.filter((s) => s.isLiquid !== false && s.lastPrice >= 68).length,
+    [rankedStocks]
+  );
+
+  const dividendStockCount = useMemo(
+    () => rankedStocks.filter((s) => (s.dividendYieldPct ?? 0) > 0).length,
+    [rankedStocks]
+  );
+
+  const illiquidStockCount = useMemo(
+    () => rankedStocks.filter((s) => s.isLiquid === false || s.lastPrice < 68).length,
+    [rankedStocks]
+  );
+
   const uniqueCatalogSectors = useMemo(() => {
     const set = new Set(IDX_SECTOR_CATALOG.map((c) => c.sector));
     return ['ALL', ...Array.from(set)];
@@ -98,6 +116,15 @@ export function ScreeningTable({
     return rankedStocks
       .filter((s) => {
         if (zoneFilter !== 'ALL' && s.dmuZone !== zoneFilter) return false;
+        if (qualityFilter === 'LIQUID_ONLY' && (s.isLiquid === false || s.lastPrice < 68)) {
+          return false;
+        }
+        if (qualityFilter === 'DIVIDEND_ONLY' && (s.dividendYieldPct ?? 0) <= 0) {
+          return false;
+        }
+        if (qualityFilter === 'ILLIQUID_ONLY' && s.isLiquid !== false && s.lastPrice >= 68) {
+          return false;
+        }
         if (sectorFilter !== 'ALL' && s.sector !== sectorFilter) return false;
         if (searchQuery.trim() !== '') {
           const q = searchQuery.toLowerCase();
@@ -113,7 +140,7 @@ export function ScreeningTable({
         const diff = a[sortField] - b[sortField];
         return sortAsc ? diff : -diff;
       });
-  }, [rankedStocks, sortField, sortAsc, zoneFilter, sectorFilter, searchQuery]);
+  }, [rankedStocks, sortField, sortAsc, zoneFilter, qualityFilter, sectorFilter, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAndSortedStocks.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
@@ -188,6 +215,7 @@ export function ScreeningTable({
       debtToEquity,
       operatingMargin,
       isLiveFetched: true,
+      isLiquid: lastPrice >= 68,
       lastSyncedAt: new Date().toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit'
@@ -200,21 +228,27 @@ export function ScreeningTable({
     setShowAddForm(false);
   };
 
-  const formatZoneLabel = (zone: DeMiguelBufferZone, rankPct: number) => {
-    switch (zone) {
+  const formatZoneLabel = (stock: StockMetrics) => {
+    if (stock.isLiquid === false || stock.lastPrice < 68) {
+      return {
+        text: 'Illiquid (Blokir)',
+        color: 'text-[#9E2A2B] font-bold'
+      };
+    }
+    switch (stock.dmuZone) {
       case 'TOP_DECILE_BUY':
         return {
-          text: `Top Buy (${rankPct}%)`,
+          text: `Top Buy (${stock.dmuRankPct}%)`,
           color: 'text-[#0D5C46] font-bold'
         };
       case 'BUFFER_HOLD_40':
         return {
-          text: `Hold ≤${rebalanceBufferPct}% (${rankPct}%)`,
+          text: `Hold ≤${rebalanceBufferPct}% (${stock.dmuRankPct}%)`,
           color: 'text-[#0284C7] bb-cyan font-bold'
         };
       default:
         return {
-          text: `Rotate (${rankPct}%)`,
+          text: `Rotate (${stock.dmuRankPct}%)`,
           color: 'text-[#9E2A2B] font-semibold'
         };
     }
@@ -238,10 +272,10 @@ export function ScreeningTable({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
           <div>
             <span className="text-xs font-bold text-[#D97706] bb-amber block">
-              Pencarian Ticker Saham BEI (.JK) · Full JCI Universe ({rankedStocks.length} Emiten Aktif)
+              Pencarian Ticker Saham BEI (.JK) · Full JCI Universe ({rankedStocks.length} Emiten · {liquidStockCount} Likuid · {dividendStockCount} Pembagi Dividen)
             </span>
             <span className="text-[11px] text-neutral-500">
-              Ketik kode emiten 4 huruf (termasuk emiten IPO baru) untuk menarik/memperbarui harga live ke dalam Universe BEI.
+              Saham tidak likuid / gocap / suspensi ditandai <strong>ILLIQUID</strong> dan otomatis diblokir dari Keranjang 1 &amp; 2.
             </span>
           </div>
 
@@ -380,7 +414,7 @@ export function ScreeningTable({
             <span className="inline-flex items-center gap-1 text-[#0D5C46] font-bold">
               <RefreshCw className="w-3 h-3" />
               <span>
-                {liveFetchedCount}/{rankedStocks.length} Emiten JCI
+                {liveFetchedCount}/{rankedStocks.length} Live Yahoo · {liquidStockCount} Likuid
               </span>
             </span>
           </div>
@@ -451,10 +485,10 @@ export function ScreeningTable({
         </div>
       </div>
 
-      {/* Search, Sector Filter, Pagination & Reset Bar */}
+      {/* Search, Liquidity/Dividend Filter, Sector Filter, Pagination & Reset Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-64">
+          <div className="relative w-60">
             <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -463,10 +497,26 @@ export function ScreeningTable({
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Cari dari 956+ saham atau sektor..."
+              placeholder="Cari saham atau sektor..."
               className="w-full pl-8 pr-3 py-1.5 text-xs font-semibold bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
             />
           </div>
+
+          <select
+            value={qualityFilter}
+            onChange={(e) => {
+              setQualityFilter(
+                e.target.value as 'ALL' | 'LIQUID_ONLY' | 'DIVIDEND_ONLY' | 'ILLIQUID_ONLY'
+              );
+              setCurrentPage(1);
+            }}
+            className="px-2.5 py-1.5 text-xs font-bold bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
+          >
+            <option value="ALL">Semua Status Likuiditas ({rankedStocks.length})</option>
+            <option value="LIQUID_ONLY">Saham Likuid Aktif ({liquidStockCount})</option>
+            <option value="DIVIDEND_ONLY">Pembagi Dividen Rutin ({dividendStockCount})</option>
+            <option value="ILLIQUID_ONLY">Illiquid / Gocap / Suspensi ({illiquidStockCount})</option>
+          </select>
 
           <select
             value={sectorFilter}
@@ -646,13 +696,13 @@ export function ScreeningTable({
           <table className="w-full text-left border-collapse tabular-nums">
             <thead className="sticky top-0 z-20 bg-[#FAF9F6] shadow-xs">
               <tr className="border-b border-[#E4E2DD] bg-[#FAF9F6] text-[11px] font-bold text-neutral-500 select-none">
-                <th className="py-2.5 px-2.5 w-[72px]">Ticker</th>
-                <th className="py-2.5 px-2.5 min-w-[240px]">
+                <th className="py-2.5 px-2.5 w-[88px]">Ticker</th>
+                <th className="py-2.5 px-2.5 min-w-[250px]">
                   <MetricTooltip
                     label="Emiten & Sektor (σ · β · ROE)"
-                    title="Profil Risiko & Profitabilitas Emiten"
-                    laymanExplanation="σ (Volatilitas) = guncangan harga tahunan; β (Beta) = kepekaan terhadap IHSG (< 1 lebih tenang, > 1 lebih agresif); ROE = tingkat keuntungan bersih perusahaan."
-                    practicalGuide="Cari perusahaan dengan ROE > 15% dan σ yang sesuai profil risiko Anda."
+                    title="Profil Risiko, Likuiditas & Dividen Emiten"
+                    laymanExplanation="σ (Volatilitas) = guncangan harga tahunan; β (Beta) = kepekaan terhadap IHSG (< 1 lebih tenang, > 1 lebih agresif); ROE = tingkat keuntungan bersih perusahaan. Badge DIV menunjukkan emiten pembagi dividen tunai."
+                    practicalGuide="Cari perusahaan Likuid dengan ROE > 15%, pembagian dividen rutin, dan σ yang sesuai profil risiko Anda."
                   />
                 </th>
                 <th
@@ -668,8 +718,8 @@ export function ScreeningTable({
                   <MetricTooltip
                     label="Low-Vol"
                     title="Faktor Low-Volatility (Bobot 28%)"
-                    laymanExplanation="Skor Ketenangan Harga (1–10): menilai seberapa stabil dan tahan banting saham ini saat IHSG sedang bergejolak."
-                    practicalGuide="Skor ≥ 7,5 artinya saham sangat stabil (cocok untuk Keranjang 1)."
+                    laymanExplanation="Skor Ketenangan Harga (1–10): menilai seberapa stabil dan tahan banting saham likuid ini saat IHSG sedang bergejolak."
+                    practicalGuide="Skor ≥ 7,5 artinya saham sangat stabil (cocok untuk Keranjang 1). Saham Illiquid/Gocap otomatis dipinalti ke 1,5."
                     align="center"
                   />
                   {renderSortIcon('dmuLowVolScore')}
@@ -693,8 +743,8 @@ export function ScreeningTable({
                 >
                   <MetricTooltip
                     label="Value"
-                    title="Faktor Value & Kewajaran Harga (Bobot 23%)"
-                    laymanExplanation="Skor Fundamental & Diskon Harga (1–10): menilai seberapa tinggi laba perusahaan (ROE & Margin) dibandingkan harga sahamnya saat ini."
+                    title="Faktor Value, Dividen & Kewajaran Harga (Bobot 23%)"
+                    laymanExplanation="Skor Fundamental, Dividen & Diskon Harga (1–10): menilai seberapa tinggi laba perusahaan (ROE & Margin) dan imbal hasil dividen dibandingkan harga sahamnya saat ini."
                     practicalGuide="Semakin tinggi skornya, semakin murah/bernilai saham tersebut dibanding kualitas bisnisnya."
                     align="center"
                   />
@@ -707,8 +757,8 @@ export function ScreeningTable({
                   <MetricTooltip
                     label="Size/Liq"
                     title="Faktor Kesehatan Neraca & Likuiditas (Bobot 15%)"
-                    laymanExplanation="Menilai seberapa sehat rasio utang perusahaan (DER rendah) serta efisiensi perputaran modalnya (1–10)."
-                    practicalGuide="Skor ≥ 7,0 berarti beban utang perusahaan sangat aman."
+                    laymanExplanation="Menilai seberapa sehat rasio utang perusahaan (DER rendah), perputaran modal, serta likuiditas transaksi pasar reguler (1–10)."
+                    practicalGuide="Skor ≥ 7,0 berarti beban utang aman dan likuiditas institusional sangat baik."
                     align="center"
                   />
                   {renderSortIcon('dmuSizeScore')}
@@ -730,7 +780,7 @@ export function ScreeningTable({
                   <MetricTooltip
                     label={`Buffer ${rebalanceBufferPct}%`}
                     title="Zona Rekomendasi Rebalancing Buffer"
-                    laymanExplanation="Panduan tindakan praktis berdasarkan peringkat saham: 'Top Buy' = prioritas beli; 'Hold' = tetap simpan; 'Rotate' = kandidat jual/ganti."
+                    laymanExplanation="Panduan tindakan praktis berdasarkan peringkat saham: 'Top Buy' = prioritas beli; 'Hold' = tetap simpan; 'Rotate' = kandidat jual/ganti; 'Illiquid (Blokir)' = diblokir dari Keranjang."
                     align="right"
                   />
                 </th>
@@ -746,26 +796,50 @@ export function ScreeningTable({
                 </tr>
               ) : (
                 visibleStocks.map((stock) => {
-                  const zoneMeta = formatZoneLabel(stock.dmuZone, stock.dmuRankPct);
+                  const zoneMeta = formatZoneLabel(stock);
                   const is1DPos = stock.change1D >= 0;
                   const is30DPos = stock.return30D >= 0;
+                  const isStockLiquid = stock.isLiquid !== false && stock.lastPrice >= 68;
+                  const divYield = stock.dividendYieldPct ?? 0;
 
                   return (
                     <tr
                       key={stock.ticker}
-                      className="hover:bg-[#FAF9F6] transition-colors"
+                      className={`hover:bg-[#FAF9F6] transition-colors ${
+                        !isStockLiquid ? 'opacity-75' : ''
+                      }`}
                     >
                       <td className="py-2.5 px-2.5 font-bold text-[#D97706] bb-amber whitespace-nowrap">
-                        {stock.ticker}
+                        <div className="flex items-center gap-1">
+                          <span>{stock.ticker}</span>
+                        </div>
                         <span className="block text-[10px] font-semibold text-neutral-400">
                           {stock.yfTicker}
                         </span>
                       </td>
 
-                      {/* Emiten, Sector & Dedicated New Line for σ · β · ROE (Never Truncated) */}
-                      <td className="py-2.5 px-2.5 min-w-[240px]">
-                        <div className="font-bold text-[#111315] text-xs leading-snug">
-                          {stock.name}
+                      {/* Emiten, Sector, Dividend/Illiquid Badges & Dedicated New Line for σ · β · ROE (Never Truncated) */}
+                      <td className="py-2.5 px-2.5 min-w-[250px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-[#111315] text-xs leading-snug">
+                            {stock.name}
+                          </span>
+                          {divYield > 0 && (
+                            <span
+                              title={`Emiten Pembagi Dividen Tunai (Estimasi Yield ~${divYield.toFixed(1)}%/thn)`}
+                              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-[#0D5C46] bg-[#059669]/10 border border-[#059669]/35 rounded-xs whitespace-nowrap"
+                            >
+                              DIV {divYield.toFixed(1)}%
+                            </span>
+                          )}
+                          {!isStockLiquid && (
+                            <span
+                              title="Saham Tidak Likuid / Stagnan / Gocap / Tidak Aktif di Yahoo Finance — Diblokir dari Keranjang 1 & 2"
+                              className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-[#9E2A2B] bg-[#E11D48]/10 border border-[#E11D48]/35 rounded-xs whitespace-nowrap"
+                            >
+                              ILLIQUID
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-[#0284C7] bb-cyan font-semibold mt-0.5">
                           {stock.sector}
@@ -781,37 +855,52 @@ export function ScreeningTable({
 
                       {/* Last Px, Compact Professional Sync Icon & Independent 1D vs 30D Colors */}
                       <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <span className="text-[#111315] font-bold">
-                            Rp {stock.lastPrice.toLocaleString('id-ID')}
-                          </span>
-                          <span
-                            title={
-                              stock.isLiveFetched
-                                ? `Data Tersinkronisasi (${stock.lastSyncedAt || 'Live'})`
-                                : 'Menunggu Sinkronisasi'
-                            }
-                            className={`inline-flex items-center justify-center p-1 rounded-xs border ${
-                              stock.isLiveFetched
-                                ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
-                                : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
-                            }`}
-                          >
-                            <RefreshCw className="w-2.5 h-2.5" />
-                          </span>
-                        </div>
-                        <div className="text-[11px] font-bold mt-0.5">
-                          <span className={is1DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'}>
-                            {is1DPos ? '+' : ''}
-                            {stock.change1D.toFixed(2)}%
-                          </span>
-                          <span className="text-neutral-400"> (30D: </span>
-                          <span className={is30DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'}>
-                            {is30DPos ? '+' : ''}
-                            {stock.return30D.toFixed(1)}%
-                          </span>
-                          <span className="text-neutral-400">)</span>
-                        </div>
+                        {stock.lastPrice > 0 ? (
+                          <>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-[#111315] font-bold">
+                                Rp {stock.lastPrice.toLocaleString('id-ID')}
+                              </span>
+                              <span
+                                title={
+                                  stock.isLiveFetched
+                                    ? `Data Tersinkronisasi Yahoo Finance (${stock.lastSyncedAt || 'Live'})`
+                                    : 'Menunggu Sinkronisasi'
+                                }
+                                className={`inline-flex items-center justify-center p-1 rounded-xs border ${
+                                  stock.isLiveFetched
+                                    ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
+                                    : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
+                                }`}
+                              >
+                                <RefreshCw className="w-2.5 h-2.5" />
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-bold mt-0.5">
+                              <span className={is1DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'}>
+                                {is1DPos ? '+' : ''}
+                                {stock.change1D.toFixed(2)}%
+                              </span>
+                              <span className="text-neutral-400"> (30D: </span>
+                              <span className={is30DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'}>
+                                {is30DPos ? '+' : ''}
+                                {stock.return30D.toFixed(1)}%
+                              </span>
+                              <span className="text-neutral-400">)</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-neutral-400 font-bold">
+                                Rp — (Data N/A)
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-semibold text-[#9E2A2B] mt-0.5">
+                              Suspensi / Tidak Aktif di YF
+                            </div>
+                          </>
+                        )}
                       </td>
 
                       {/* Center-Aligned Indicator Values */}

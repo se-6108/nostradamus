@@ -60,6 +60,8 @@ export interface StockMetrics {
   hrpPropensity: number;
   role: BarbellRole;
   isLiveFetched?: boolean;
+  isLiquid?: boolean;
+  dividendYieldPct?: number;
   lastSyncedAt?: string;
 }
 

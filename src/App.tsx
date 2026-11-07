@@ -47,7 +47,7 @@ import { ArchitectureVault } from './components/ArchitectureVault';
 import { GitHubCloudSyncModal } from './components/GitHubCloudSyncModal';
 import { Sun, Moon, Cloud, RefreshCw } from 'lucide-react';
 
-const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v6_realpx';
+const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v7_liq_div';
 const PORTFOLIO_CACHE_KEY = 'nostradamus_dmu24_portfolio_v4';
 const THEME_CACHE_KEY = 'nostradamus_theme_mode_v1';
 
@@ -503,7 +503,8 @@ export default function App() {
             setSyncStatusLabel(
               `Syncing ${syncedCount}/${totalCount} (${tickerLabel})...`
             );
-          }
+          },
+          !silent
         ),
         fetchLiveFinancialNewsRss(DEFAULT_NEWS_SENTIMENT)
       ]);
@@ -545,16 +546,20 @@ export default function App() {
 
       if (!silent) {
         const liveCount = rerankedStocks.filter((s) => s.isLiveFetched).length;
+        const liquidCount = rerankedStocks.filter(
+          (s) => s.isLiquid !== false && s.lastPrice >= 68
+        ).length;
         Swal.fire({
           icon: 'success',
-          title: `✓ ${liveCount}/${rerankedStocks.length} Saham & Makro Berhasil Sync Live`,
+          title: `✓ ${liveCount}/${rerankedStocks.length} Emiten & Makro Berhasil Sync Live`,
           html: `
             <div style="text-align:left;font-size:12.5px;line-height:1.6;color:#374151;">
               <div><strong>Waktu Update Sistem:</strong> ${fullTimestampStr}</div>
               <div><strong>IHSG (^JKSE):</strong> ${activeQuote.lastPrice.toLocaleString('id-ID', {
                 minimumFractionDigits: 2
               })} (${activeQuote.change1D >= 0 ? '+' : ''}${activeQuote.change1D.toFixed(2)}%)</div>
-              <div><strong>Emiten Tersinkron:</strong> ✓ ${liveCount} dari ${rerankedStocks.length} saham BEI (.JK) + 9 Indikator Makro + Berita RSS Live</div>
+              <div><strong>Emiten Aktif Yahoo Finance:</strong> ✓ ${liveCount} dari ${rerankedStocks.length} emiten JCI (.JK)</div>
+              <div><strong>Filter Likuiditas Keranjang:</strong> <strong>${liquidCount} Saham Likuid Aktif</strong> (Saham Gocap/Illiquid otomatis diblokir dari Keranjang 1 & 2)</div>
             </div>
           `,
           confirmButtonColor: '#D97706'
@@ -971,23 +976,23 @@ export default function App() {
         onPushNow={(draftCfg) => handlePushToGitHub(draftCfg, undefined, false)}
       />
 
-      {/* Institutional Footer: Nostradamus Quant Terminal & Credit: Fayadh © 2026 */}
-      <footer className="bg-[#FFFFFF] border-t border-[#E4E2DD] py-5 px-6 mt-12">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="font-semibold text-[#111315]">
+      {/* Compact Sticky Bottom Footer Bar: Nostradamus Quant Terminal & Credit: Fayadh © 2026 */}
+      <footer className="sticky bottom-0 z-30 h-9 px-4 sm:px-6 bg-[#FFFFFF]/95 backdrop-blur-md border-t border-[#E4E2DD] flex items-center justify-between shadow-xs mt-8">
+        <div className="max-w-6xl w-full mx-auto flex items-center justify-between gap-3 text-[11px] text-neutral-500">
+          <div className="flex items-center gap-2.5 truncate">
+            <span className="font-semibold text-[#111315] truncate">
               &copy; 2026 Nostradamus Quant Terminal
             </span>
             <span>·</span>
             <button
               type="button"
               onClick={() => setShowDeployKitModal(!showDeployKitModal)}
-              className="text-[#0284C7] bb-cyan hover:underline cursor-pointer"
+              className="text-[#0284C7] bb-cyan font-semibold hover:underline cursor-pointer whitespace-nowrap"
             >
               {showDeployKitModal ? 'Tutup Dokumentasi' : 'Dokumentasi & GitHub Actions'}
             </button>
           </div>
-          <div className="font-bold text-[#D97706] bb-amber">
+          <div className="font-bold text-[#D97706] bb-amber whitespace-nowrap shrink-0">
             &copy; 2026 · Credit: Fayadh
           </div>
         </div>

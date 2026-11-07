@@ -404,14 +404,6 @@ async function main() {
 
   const liveFetchedCount = Object.keys(sparkData).length;
 
-  // Ensure every single ticker in the 956+ JCI universe has a complete SparkSeriesItem in sparkData
-  for (const ticker of uniqueIdxTickers) {
-    const yfSym = `${ticker}.JK`;
-    if (!sparkData[yfSym]) {
-      sparkData[yfSym] = buildCalibratedSparkSeries(ticker);
-    }
-  }
-
   const newsResults = await Promise.all([
     fetchRssXmlDirect('https://www.cnbcindonesia.com/market/rss', 'CNBC Indonesia Market', 'DOMESTIC', 4),
     fetchRssXmlDirect('https://www.antaranews.com/rss/ekonomi.xml', 'Antara Ekonomi Nasional', 'DOMESTIC', 3),

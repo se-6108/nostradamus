@@ -57,6 +57,11 @@ export function BarbellAllocatorCard({
     [stocks]
   );
 
+  const liquidStockCount = useMemo(
+    () => stocks.filter((s) => s.isLiquid !== false && s.lastPrice >= 68).length,
+    [stocks]
+  );
+
   const handleCapitalChange = (val: string) => {
     setRawInput(val);
     const num = parseInt(val.replace(/[^0-9]/g, ''), 10);
@@ -76,16 +81,12 @@ export function BarbellAllocatorCard({
             </span>
             <span className="text-neutral-400">·</span>
             <span
-              title="Seluruh emiten JCI telah tersinkronisasi ke dalam kalkulator keranjang"
-              className={`inline-flex items-center gap-1 ${
-                liveFetchedCount === stocks.length
-                  ? 'text-[#0D5C46] font-bold'
-                  : 'text-[#D97706] bb-amber font-bold'
-              }`}
+              title="Emiten likuid aktif dari seluruh emiten JCI telah tersinkronisasi ke dalam kalkulator keranjang"
+              className="inline-flex items-center gap-1 text-[#0D5C46] font-bold"
             >
               <RefreshCw className="w-3 h-3" />
               <span>
-                {liveFetchedCount}/{stocks.length} Emiten JCI
+                {liquidStockCount} Likuid ({liveFetchedCount}/{stocks.length} JCI)
               </span>
             </span>
           </div>
@@ -93,8 +94,8 @@ export function BarbellAllocatorCard({
             Kalkulator Alokasi Multifaktor &amp; Ukuran Lot BEI (1 Lot = 100 Lembar)
           </h2>
           <p className="text-xs text-neutral-600 mt-0.5">
-            Pemilihan saham Keranjang 1 &amp; Keranjang 2 dievaluasi dari seluruh{' '}
-            <strong>{stocks.length} emiten JCI (.JK)</strong> (
+            Hanya menyaring <strong>{liquidStockCount} saham likuid aktif</strong> dari{' '}
+            <strong>{stocks.length} emiten JCI (.JK)</strong> — saham tidak likuid/gocap diblokir otomatis (
             <span className="font-bold text-[#0284C7] bb-cyan">
               {analytics.equityExposureWeightPct}% Ekuitas Multifaktor : {analytics.cashReserveWeightPct}% Kas Pasar Uang
             </span>
@@ -138,7 +139,7 @@ export function BarbellAllocatorCard({
                 Dasar Pengambilan &amp; Mode Seleksi Keranjang 1 vs Keranjang 2
               </span>
               <span className="text-[11px] text-neutral-500">
-                Kedua keranjang menggunakan rumus perankingan berbeda yang langsung berubah mengikuti pergerakan harga live (1D &amp; 30D).
+                Wajib Likuid &amp; Harga Live Valid (≥ Rp 80) · Prioritas Dividen Tunai di Keranjang 1 · Akselerasi Harga Live di Keranjang 2.
               </span>
             </div>
           </div>
@@ -204,18 +205,18 @@ export function BarbellAllocatorCard({
         {/* Formula Comparison Strip */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-2 border-t border-[#E4E2DD]/80 text-[11px]">
           <div className="px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs">
-            <span className="font-bold text-[#0D5C46]">Rumus Keranjang 1 (Defensive Core): </span>
+            <span className="font-bold text-[#0D5C46]">Rumus Keranjang 1 (Defensive &amp; Dividend Core): </span>
             <span className="text-neutral-600">
-              Syarat <code className="font-bold">β ≤ 0.96</code> · Diurutkan dari{' '}
-              <strong>50% Low-Vol Live + 30% Diskon Valuasi Harga Live + 20% Stabilitas Tren</strong>
+              Syarat <code className="font-bold">Likuid &amp; β ≤ 0.96</code> · Diurutkan dari{' '}
+              <strong>50% Low-Vol Live + 30% Value &amp; Dividen Yield + 20% Stabilitas Tren</strong>
               {selectionMode === 'SECTOR_ROTATION' ? ' (Maks 1 saham/sektor).' : ' (Maks 2 saham/sektor).'}
             </span>
           </div>
           <div className="px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs">
             <span className="font-bold text-[#0284C7] bb-cyan">Rumus Keranjang 2 (Momentum Alpha): </span>
             <span className="text-neutral-600">
-              Kandidat Non-Keranjang 1 · Diurutkan dari{' '}
-              <strong>60% Akselerasi Harga Live (Return 30D + Breakout 1D) + 25% Size + 15% Value</strong>.
+              Kandidat Likuid Non-Keranjang 1 · Diurutkan dari{' '}
+              <strong>60% Akselerasi Harga Live (Return 30D + Breakout 1D) + 25% Size/Liq + 15% Value</strong>.
             </span>
           </div>
         </div>
@@ -283,21 +284,21 @@ export function BarbellAllocatorCard({
 
       {/* Two-Sided Multifactor Sleeves */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 tabular-nums">
-        {/* Left Sleeve: Low-Volatility & Value Factor Core */}
+        {/* Left Sleeve: Low-Volatility, Dividend & Value Factor Core */}
         <div className="p-4 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs space-y-3">
           <div className="flex items-center justify-between border-b border-[#E4E2DD] pb-2.5">
             <div>
               <div className="text-xs font-bold text-[#0D5C46]">
                 <MetricTooltip
-                  label={`Keranjang 1 · Low-Volatility & Value Core (${lowVolCorePositions.length} Saham)`}
-                  title="Keranjang 1: Pelindung Nilai & Ketenangan (55% Porsi Saham)"
-                  laymanExplanation="Berisi saham-saham berfundamental kuat yang gerak harganya relatif tenang (Beta ≤ 0,96) dan harganya masih wajar/diskon dibanding labanya."
-                  practicalGuide="Berfungsi sebagai jangkar penahan agar portofolio Anda tidak mudah merah parah saat pasar goyang."
+                  label={`Keranjang 1 · Low-Volatility & Dividend Core (${lowVolCorePositions.length} Saham)`}
+                  title="Keranjang 1: Pelindung Nilai, Ketenangan & Dividen (55% Porsi Saham)"
+                  laymanExplanation="Berisi saham-saham likuid berfundamental kuat yang gerak harganya relatif tenang (Beta ≤ 0,96), rutin membagikan dividen tunai, dan harganya masih wajar dibanding labanya."
+                  practicalGuide="Saham tidak likuid/gocap diblokir otomatis dari keranjang ini."
                   className="text-[#0D5C46]"
                 />
               </div>
               <span className="text-[11px] text-neutral-500 block mt-0.5">
-                Kriteria: β ≤ 0.96 · Volatilitas Rendah &amp; Valuasi Harga Live Menarik
+                Kriteria: Likuid Institusional · β ≤ 0.96 · Prioritas Pembagi Dividen
               </span>
             </div>
             <div className="text-right">
@@ -314,6 +315,7 @@ export function BarbellAllocatorCard({
             {lowVolCorePositions.map((pos, idx) => {
               const is1DPos = pos.stock.change1D >= 0;
               const is30DPos = pos.stock.return30D >= 0;
+              const divYield = pos.stock.dividendYieldPct ?? 0;
               const sleeveScore = computeSleeveSpecificScore(
                 pos.stock,
                 'DEFENSIVE',
@@ -357,6 +359,14 @@ export function BarbellAllocatorCard({
                         [30D: {is30DPos ? '+' : ''}
                         {pos.stock.return30D.toFixed(1)}%]
                       </span>
+                      {divYield > 0 && (
+                        <span
+                          title={`Emiten Pembagi Dividen Tunai (Estimasi Yield ~${divYield.toFixed(1)}%/thn)`}
+                          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-[#0D5C46] bg-[#059669]/10 border border-[#059669]/35 rounded-xs"
+                        >
+                          DIV {divYield.toFixed(1)}%
+                        </span>
+                      )}
                       <span
                         title={
                           pos.stock.isLiveFetched
@@ -373,7 +383,7 @@ export function BarbellAllocatorCard({
                       </span>
                     </div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">
-                      {pos.stock.sector} · Bobot {pos.totalPortfolioWeightPct.toFixed(1)}% · Skor Defensif{' '}
+                      {pos.stock.name} · {pos.stock.sector} · Bobot {pos.totalPortfolioWeightPct.toFixed(1)}% · Skor Defensif{' '}
                       <strong className="text-[#0D5C46]">{sleeveScore.toFixed(2)}</strong>
                     </div>
                     <div className="text-[10px] font-semibold text-[#0D5C46] mt-0.5">
@@ -402,14 +412,14 @@ export function BarbellAllocatorCard({
                 <MetricTooltip
                   label={`Keranjang 2 · Momentum Live & Size Alpha (${momentumValuePositions.length} Saham)`}
                   title="Keranjang 2: Akselerasi Momentum Live (45% Porsi Saham)"
-                  laymanExplanation="Berisi saham-saham di luar Keranjang 1 yang sedang memiliki tarikan kenaikan harga terkuat dalam 1 hari & 30 hari terakhir (live dari Yahoo Finance)."
+                  laymanExplanation="Berisi saham-saham likuid di luar Keranjang 1 yang sedang memiliki tarikan kenaikan harga terkuat dalam 1 hari & 30 hari terakhir (live dari Yahoo Finance)."
                   practicalGuide="Berfungsi sebagai mesin pendongkrak keuntungan (alpha) ketika tren pasar sedang mendukung."
                   align="right"
                   className="text-[#0284C7] bb-cyan"
                 />
               </div>
               <span className="text-[11px] text-neutral-500 block mt-0.5">
-                Kriteria: Akselerasi Return 30D + Breakout 1D &amp; Efisiensi Modal
+                Kriteria: Likuid Institusional · Akselerasi Return 30D + Breakout 1D
               </span>
             </div>
             <div className="text-right">
@@ -428,6 +438,7 @@ export function BarbellAllocatorCard({
             {momentumValuePositions.map((pos, idx) => {
               const is1DPos = pos.stock.change1D >= 0;
               const is30DPos = pos.stock.return30D >= 0;
+              const divYield = pos.stock.dividendYieldPct ?? 0;
               const sleeveScore = computeSleeveSpecificScore(
                 pos.stock,
                 'AGGRESSIVE',
@@ -471,6 +482,14 @@ export function BarbellAllocatorCard({
                         [30D: {is30DPos ? '+' : ''}
                         {pos.stock.return30D.toFixed(1)}%]
                       </span>
+                      {divYield > 0 && (
+                        <span
+                          title={`Emiten Pembagi Dividen Tunai (Estimasi Yield ~${divYield.toFixed(1)}%/thn)`}
+                          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-[#0D5C46] bg-[#059669]/10 border border-[#059669]/35 rounded-xs"
+                        >
+                          DIV {divYield.toFixed(1)}%
+                        </span>
+                      )}
                       <span
                         title={
                           pos.stock.isLiveFetched
@@ -487,7 +506,7 @@ export function BarbellAllocatorCard({
                       </span>
                     </div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">
-                      {pos.stock.sector} · Bobot {pos.totalPortfolioWeightPct.toFixed(1)}% · Skor Momentum{' '}
+                      {pos.stock.name} · {pos.stock.sector} · Bobot {pos.totalPortfolioWeightPct.toFixed(1)}% · Skor Momentum{' '}
                       <strong className="text-[#0284C7] bb-cyan">{sleeveScore.toFixed(2)}</strong>
                     </div>
                     <div className="text-[10px] font-semibold text-[#0284C7] bb-cyan mt-0.5">
