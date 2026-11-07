@@ -1,6 +1,6 @@
 {
-  "summary":  "Revised implementation plan adding compact professional SVG sync indicator icon (replacing the word \"SYNCED\" and avoiding emojis to save space across ScreeningTable, BarbellAllocatorCard, GlobalMacroPulse, MarketRegimeBanner, ActivePortfolioManager, and Header), along with Dynamic Full JCI Universe (~956 -> 1000+ emiten auto-discovery), dedicated new line for σ · β · ROE, centered indicator values, independent 1D vs 30D colors, removal of Page 1 redundant nav cards, objective news sentiment, and GitHub Actions ERESOLVE fix.",
-  "updatedAt":  "2026-11-07T02:10:26.627219250Z",
-  "requestFeedback":  true,
-  "userFacing":  true
+  "summary": "Revised implementation plan directly resolving the exact browser console 404 errors (`nostradamus/static-market-snapshot.json 404` and `api/news/rss 404`) and ensuring all BEI (.JK) emiten prices are updated in both Screener and Baskets by bundling the full Yahoo Finance snapshot directly into `src/data/staticMarketSnapshot.json` + root `/static-market-snapshot.json` and restricting `/api/*` calls strictly to local/Express environments.",
+  "updatedAt": "2026-11-07T03:00:52.455400605Z",
+  "requestFeedback": true,
+  "userFacing": true
 }

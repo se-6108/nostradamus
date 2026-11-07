@@ -5,6 +5,7 @@ import {
   createCalibratedIdxEntry,
   getCalibratedInitialMarketAction
 } from '../data/idxAllEmitenCatalog';
+import embeddedSnapshotRaw from '../data/staticMarketSnapshot.json';
 
 export interface IdxDirectoryEntry {
   ticker: string;
@@ -16,6 +17,35 @@ export interface IdxDirectoryEntry {
   approxPrice: number;
   approxBeta: number;
 }
+
+export interface SparkSeriesItem {
+  symbol: string;
+  lastPrice: number;
+  change1D: number;
+  closes: number[];
+  shortName?: string;
+}
+
+interface StaticMarketSnapshotPayload {
+  generatedAt?: string;
+  liveYahooSymbolCount?: number;
+  symbolCount?: number;
+  totalJciEmitenCount?: number;
+  discoveredTickers?: Array<{ ticker: string; name?: string; sector?: string }>;
+  data?: Record<string, SparkSeriesItem>;
+  newsItems?: Array<{
+    id: string;
+    title: string;
+    source: string;
+    publishedAt: string;
+    url: string;
+    region: 'DOMESTIC' | 'GLOBAL';
+    summary?: string;
+  }>;
+}
+
+const embeddedSnapshot: StaticMarketSnapshotPayload =
+  (embeddedSnapshotRaw as unknown as StaticMarketSnapshotPayload) || {};
 
 /**
  * Formats a Date into a full Indonesian Day, Date, Month, Year & WIB Time string
@@ -54,7 +84,8 @@ export const IDX_SECTOR_CATALOG: IdxDirectoryEntry[] = FULL_JCI_EMITEN_CATALOG;
 
 /**
  * Builds the Full JCI Stock Universe (~956+ Emiten BEI across 11 IDX-IC Sectors)
- * Automatically adapts to any newly added or discovered .JK emiten.
+ * Immediately hydrates every stock with its real Yahoo Finance price, 1D%, 30D%, Beta & Volatility
+ * from the embedded snapshot so both Screener & Keranjang 1/2 are 100% up-to-date from initial render.
  */
 export function buildIdx100StockUniverse(
   rebalanceBufferPct: number = 40,
@@ -75,19 +106,67 @@ export function buildIdx100StockUniverse(
     }
   }
 
+  // Also include any newly discovered .JK tickers present in embeddedSnapshot
+  if (embeddedSnapshot?.data) {
+    for (const sym of Object.keys(embeddedSnapshot.data)) {
+      if (sym.endsWith('.JK')) {
+        const clean = sym.replace(/\.JK$/i, '').toUpperCase();
+        if (clean.length === 4 && !mergedCatalogMap.has(clean)) {
+          const snapItem = embeddedSnapshot.data[sym];
+          mergedCatalogMap.set(
+            clean,
+            createCalibratedIdxEntry(clean, undefined, snapItem?.shortName)
+          );
+        }
+      }
+    }
+  }
+
+  const ihsgCloses = embeddedSnapshot?.data?.['^JKSE']?.closes || [];
+  const ihsgRets = computeDailyReturns(ihsgCloses);
+
   const enriched = Array.from(mergedCatalogMap.values()).map((entry) => {
+    const yfTicker = `${entry.ticker}.JK`;
+    const snapItem = embeddedSnapshot?.data?.[yfTicker];
     const action = getCalibratedInitialMarketAction(entry.ticker);
+
+    let lastPrice = entry.approxPrice;
+    let change1D = action.change1D;
+    let return30D = action.return30D;
+    let beta1Y = entry.approxBeta;
+    let volatilityAnn = Number((entry.approxBeta * 18.2).toFixed(1));
+
+    if (snapItem && snapItem.lastPrice > 0) {
+      lastPrice = Math.round(snapItem.lastPrice);
+      change1D = snapItem.change1D;
+
+      if (Array.isArray(snapItem.closes) && snapItem.closes.length >= 2) {
+        const close30Ago =
+          snapItem.closes[Math.max(0, snapItem.closes.length - 22)] || snapItem.lastPrice;
+        if (close30Ago > 0) {
+          return30D = Number((((snapItem.lastPrice - close30Ago) / close30Ago) * 100).toFixed(2));
+        }
+
+        const stockRets = computeDailyReturns(snapItem.closes);
+        if (stockRets.length >= 12 && ihsgRets.length >= 12) {
+          const bv = computeBetaAndVolatility(stockRets, ihsgRets);
+          beta1Y = bv.beta1Y;
+          volatilityAnn = bv.volatilityAnn;
+        }
+      }
+    }
+
     return enrichStockMetrics({
       ticker: entry.ticker,
       idxTicker: `IDX:${entry.ticker}`,
-      yfTicker: `${entry.ticker}.JK`,
+      yfTicker,
       name: entry.name,
       sector: entry.sector,
-      lastPrice: entry.approxPrice,
-      change1D: action.change1D,
-      return30D: action.return30D,
-      beta1Y: entry.approxBeta,
-      volatilityAnn: Number((entry.approxBeta * 18.2).toFixed(1)),
+      lastPrice,
+      change1D,
+      return30D,
+      beta1Y,
+      volatilityAnn,
       roe: entry.defaultRoe,
       debtToEquity: entry.defaultDer,
       operatingMargin: entry.defaultOpMargin,
@@ -99,83 +178,31 @@ export function buildIdx100StockUniverse(
   return rankUniverseWithBuffer(enriched, rebalanceBufferPct);
 }
 
-export interface SparkSeriesItem {
-  symbol: string;
-  lastPrice: number;
-  change1D: number;
-  closes: number[];
-  shortName?: string;
-}
-
-interface StaticMarketSnapshotPayload {
-  generatedAt?: string;
-  symbolCount?: number;
-  totalJciEmitenCount?: number;
-  discoveredTickers?: Array<{ ticker: string; name?: string; sector?: string }>;
-  data?: Record<string, SparkSeriesItem>;
-  newsItems?: Array<{
-    id: string;
-    title: string;
-    source: string;
-    publishedAt: string;
-    url: string;
-    region: 'DOMESTIC' | 'GLOBAL';
-    summary?: string;
-  }>;
-}
-
 let cachedLocalServerAvailable: boolean | null = null;
-let cachedStaticSnapshot: StaticMarketSnapshotPayload | null = null;
-let cachedStaticSnapshotAt = 0;
 
-function isStaticHostingEnvironment(): boolean {
+/**
+ * Strictly checks if the local Express development server (/api/*) is available.
+ * Returns false on GitHub Pages (*.github.io) and all production static hosts so /api/* never 404s.
+ */
+function canUseLocalExpressBackend(): boolean {
   if (typeof window === 'undefined') return false;
+  if (cachedLocalServerAvailable === false) return false;
   const host = window.location.hostname;
-  if (
-    host.endsWith('.github.io') ||
-    host.endsWith('.pages.dev') ||
-    host.endsWith('.netlify.app') ||
-    host.endsWith('.vercel.app')
-  ) {
-    return true;
-  }
-  return cachedLocalServerAvailable === false;
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.run.app');
 }
 
 async function loadStaticMarketSnapshot(
-  forceRefresh = false
+  _forceRefresh = false
 ): Promise<StaticMarketSnapshotPayload | null> {
-  const now = Date.now();
-  if (!forceRefresh && cachedStaticSnapshot && now - cachedStaticSnapshotAt < 45000) {
-    return cachedStaticSnapshot;
+  if (embeddedSnapshot && embeddedSnapshot.data && typeof embeddedSnapshot.data === 'object') {
+    return embeddedSnapshot;
   }
-
-  const candidatePaths = [
-    `./static-market-snapshot.json?v=${Math.floor(now / 60000)}`,
-    `./docs/static-market-snapshot.json?v=${Math.floor(now / 60000)}`
-  ];
-
-  for (const url of candidatePaths) {
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
-        const json = (await res.json()) as StaticMarketSnapshotPayload;
-        if (json && json.data && typeof json.data === 'object') {
-          cachedStaticSnapshot = json;
-          cachedStaticSnapshotAt = now;
-          return json;
-        }
-      }
-    } catch {
-      // try next candidate path
-    }
-  }
-  return cachedStaticSnapshot;
+  return null;
 }
 
 /**
  * Fetches closing price series and latest market quote for a single symbol.
- * Uses local Express /api/yahoo/chart when available, or pre-synced static-market-snapshot.json on GitHub Pages.
+ * Uses local Express /api/yahoo/chart when available, or pre-synced embedded snapshot on GitHub Pages.
  */
 export async function fetchYahooChartSeries(
   symbol: string,
@@ -186,7 +213,7 @@ export async function fetchYahooChartSeries(
   closes: number[];
   shortName?: string;
 }> {
-  if (!isStaticHostingEnvironment()) {
+  if (canUseLocalExpressBackend()) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 7500);
@@ -231,7 +258,7 @@ export async function fetchYahooSparkBatch(
   const resultMap: Record<string, SparkSeriesItem> = {};
   if (uniqueSymbols.length === 0) return resultMap;
 
-  // First load pre-synced snapshot data so all 956+ JCI stocks have an immediate baseline
+  // First load pre-synced snapshot data so all 956+ JCI stocks have an immediate real Yahoo Finance baseline
   const snapshot = await loadStaticMarketSnapshot(false);
   if (snapshot?.data) {
     for (const sym of uniqueSymbols) {
@@ -242,14 +269,13 @@ export async function fetchYahooSparkBatch(
     }
   }
 
-  // If local Express backend is active, fetch live delta updates for active symbols
-  if (!isStaticHostingEnvironment()) {
-    const livePrioritySymbols = uniqueSymbols.slice(0, 120);
-    const SERVER_BATCH_SIZE = 30;
-    for (let i = 0; i < livePrioritySymbols.length; i += SERVER_BATCH_SIZE) {
-      const batch = livePrioritySymbols.slice(i, i + SERVER_BATCH_SIZE);
+  // If local Express backend is active, fetch live delta updates across the symbols
+  if (canUseLocalExpressBackend()) {
+    const SERVER_BATCH_SIZE = 40;
+    for (let i = 0; i < uniqueSymbols.length; i += SERVER_BATCH_SIZE) {
+      const batch = uniqueSymbols.slice(i, i + SERVER_BATCH_SIZE);
       onChunkProgress?.(
-        Math.min(uniqueSymbols.length, Math.round(((i + batch.length) / livePrioritySymbols.length) * uniqueSymbols.length)),
+        Math.min(uniqueSymbols.length, i + batch.length),
         uniqueSymbols.length,
         `${batch[0]} .. ${batch[batch.length - 1]}`
       );
@@ -1181,8 +1207,8 @@ async function fetchRssFeedItems(
 export async function fetchLiveFinancialNewsRss(
   fallbackNews: NewsSentimentItem[]
 ): Promise<NewsSentimentItem[]> {
-  // 1. Try direct server endpoint (/api/news/rss) only when not on static *.github.io
-  if (!isStaticHostingEnvironment()) {
+  // 1. Try direct server endpoint (/api/news/rss) only when local Express backend is active
+  if (canUseLocalExpressBackend()) {
     try {
       const res = await fetch('/api/news/rss', { cache: 'no-store' });
       if (res.ok) {

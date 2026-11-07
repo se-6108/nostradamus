@@ -1,54 +1,36 @@
-# Rencana Implementasi (Revisi Final): Dynamic Full JCI Auto-Discovery (~956 → 1000+ Emiten), Indikator Sync Profesional Tanpa Teks "SYNCED", Perbaikan Tabel Screener, Sentimen Berita Objektif & Fix GitHub Actions
+# Rencana Implementasi (Revisi): Perbaikan Error 404 `nostradamus/static-market-snapshot.json` & `api/news/rss` serta Sinkronisasi Penuh Harga Seluruh Emiten BEI (.JK)
 
-## 1. Indikator Sinkronisasi Profesional & Hemat Ruang (Tanpa Teks `"SYNCED"` dan Tanpa Emoji)
+## 1. Analisis Log Error Konsol Browser yang Anda Kirimkan
 
-- **Masalah Sebelumnya**: Badge bertuliskan `✓ SYNCED` atau `⏳ PENDING` pada setiap baris saham di Tabel Screener, Keranjang 1 & 2, Global Macro Wire, dan Header memakan banyak ruang horizontal.
-- **Perbaikan**:
-  - Menghapus kata **`SYNCED`** / **`PENDING`** pada badge status per-item di `ScreeningTable.tsx`, `BarbellAllocatorCard.tsx`, `GlobalMacroPulse.tsx`, `MarketRegimeBanner.tsx`, `ActivePortfolioManager.tsx`, dan `Header.tsx`.
-  - Menggantinya dengan **ikon vektor SVG profesional berukuran ringkas (`<RefreshCw className="w-3 h-3" />` / simbol kuantitatif `↻` tanpa emoji)** dengan warna hijau zamrud (`text-[#0D5C46]`) saat sudah tersinkronisasi dan amber (`text-[#D97706]`) saat sedang memuat, dilengkapi atribut `title="Data Tersinkronisasi Live"` saat kursor diarahkan (*hover*).
-  - Hasilnya jauh lebih bersih, institusional, dan menghemat ruang kolom secara signifikan.
+Dari log konsol browser:
+```text
+nostradamus/static-market-snapshot.json?v=29900313:1  Failed to load resource: the server responded with a status of 404 ()
+api/news/rss:1  Failed to load resource: the server responded with a status of 404 ()
+```
 
----
-
-## 2. Arsitektur Adaptif Jumlah Emiten JCI (~956 Emiten & Auto-Scaling Realtime)
-
-- **Katalog & Mesin Auto-Discovery Emiten BEI (`src/data/idxAllEmitenCatalog.ts` & `src/utils/liveMarketFetcher.ts`)**:
-  - Memuat secara default **seluruh ~956 emiten BEI (`.JK`) per November 2026** lintas 11 sektor IDX-IC agar **Keranjang 1 & 2 (`BarbellAllocatorCard`)** dan **Matriks Screener 4-Faktor (`ScreeningTable`)** selalu mengevaluasi keseluruhan pasar BEI.
-  - Dilengkapi **Dynamic JCI Emiten Auto-Discovery** yang mendeteksi emiten `.JK` baru dari direktori/screener pasar secara otomatis; apabila jumlah emiten di BEI bertambah (misalnya menjadi **980 atau 1.000+ emiten**), jumlah saham yang disinkronkan dan ditampilkan (`stocks.length`) otomatis menyesuaikan secara *real-time* tanpa batas statis.
-
----
-
-## 3. Perbaikan Tata Letak & Warna pada Tabel Screener (`src/components/ScreeningTable.tsx`)
-
-1. **Baris Baru untuk `σ · β · ROE` (Tidak Terpotong)**:
-   - Memisahkan informasi pada kolom `Emiten & Sektor (σ · β · ROE)` menjadi:
-     - **Baris 1**: Nama Emiten (`font-bold text-[#111315]`)
-     - **Baris 2**: Sektor BEI (`text-[#0284C7] bb-cyan font-semibold`)
-     - **Baris 3 (Baris Baru Khusus Indikator)**: `σ {stock.volatilityAnn}% · β {stock.beta1Y.toFixed(2)}x · ROE {stock.roe.toFixed(1)}%` (`whitespace-nowrap`) sehingga nilai **Volatilitas (`σ`), Beta (`β`), dan `ROE` terlihat utuh 100% tanpa terpotong `...`**.
-2. **Rata Tengah (`text-center`) untuk Seluruh Nilai Indikator**:
-   - Mengubah alignment `<th>` dan `<td>` pada kolom **`Low-Vol`**, **`Mom Live`**, **`Value`**, **`Size/Liq`**, **`Skor Total`**, dan **`Buffer 40%`** menjadi **`text-center`** agar nilai indikator rata tengah dan tidak mepet ke kanan.
-3. **Warna Independen untuk Return `1D` vs `30D` (`+` Hijau, `-` Merah)**:
-   - Memisahkan elemen `<span>` dan evaluasi warna antara persentase `1D` dan `30D`:
-     - **`1D`**: Hijau (`text-[#0D5C46]`) jika `change1D >= 0`, Merah (`text-[#9E2A2B]`) jika `change1D < 0`.
-     - **`30D`**: Hijau (`text-[#0D5C46]`) jika `return30D >= 0`, Merah (`text-[#9E2A2B]`) jika `return30D < 0`.
-   - Nilai `30D` yang minus (misal `30D: -22.0%` atau `30D: -3.1%`) kini tampil **merah** secara akurat meskipun `1D`-nya positif.
+**Penyebab Pasti Kedua Masalah (Error 404 & Harga Emiten Belum Terupdate):**
+1. **Mengapa `nostradamus/static-market-snapshot.json` Error 404 & Harga Emiten Tidak Terupdate?**
+   - Saat GitHub Pages melayani aplikasi dari root repository (`/nostradamus/`), browser meminta `./static-market-snapshot.json`, yang diterjemahkan menjadi `/nostradamus/static-market-snapshot.json` di root repo. Sebelumnya file tersebut hanya disimpan di `/public/` dan `/docs/`, belum disalin ke root `/static-market-snapshot.json` maupun di-bundle langsung ke dalam `app.js`.
+   - Karena file snapshot gagal dimuat (404), seluruh emiten di Screener dan Keranjang gagal membaca data harga Yahoo Finance terbaru dan tertahan di harga awal (`approxPrice`).
+   - Selain itu, script generator sebelumnya baru menarik 134 simbol pertama, belum seluruh emiten BEI (`.JK`).
+2. **Mengapa `api/news/rss` Error 404?**
+   - Fungsi pendeteksi environment statis sebelumnya hanya mengecek beberapa akhiran domain dan belum membatasi pemanggilan `/api/*` secara ketat hanya untuk server lokal/Cloud Run (`localhost` / `.run.app`), serta bundle `docs/assets/app.js` perlu di-build ulang setelah perubahan.
 
 ---
 
-## 4. Penghapusan Navigasi Halaman Redundan di Page 1 (`src/App.tsx`)
+## 2. Solusi Permanen yang Akan Diimplementasikan
 
-- Menghapus blok 2 kartu navigasi bawah pada Tab 01 (`03. Evaluasi Portofolio Aktif & GitHub Cloud Sync` dan `02. Buka Screener 4-Faktor`) karena perpindahan halaman sudah terakomodasi penuh oleh **Sticky Menu Bar** di bagian atas.
+### A. Zero-404 Bundled + Multi-Path Snapshot (`src/data/staticMarketSnapshot.json` & `/static-market-snapshot.json`)
+1. **Direct Module Embedding (`src/data/staticMarketSnapshot.json`)**:
+   - Menyimpan hasil sinkronisasi harga seluruh emiten BEI (`.JK`) dan berita RSS langsung ke `src/data/staticMarketSnapshot.json` yang di-import langsung ke dalam kode TypeScript (`liveMarketFetcher.ts`), sekaligus menyalinnya ke `/static-market-snapshot.json` (root), `/public/static-market-snapshot.json`, dan `/docs/static-market-snapshot.json`.
+   - Dengan arsitektur ini, **data harga seluruh emiten BEI langsung tersedia 100% di dalam memori `app.js` sejak detik pertama halaman dibuka tanpa bergantung pada request file eksternal yang berisiko 404**.
+2. **Strict API Guard (`canUseLocalExpressBackend()`)**:
+   - Memastikan endpoint `/api/news/rss`, `/api/yahoo/spark`, dan `/api/yahoo/chart` **HANYA** dipanggil apabila aplikasi berjalan di server Express (`window.location.hostname === 'localhost'` atau `.run.app`).
+   - Saat dibuka di GitHub Pages (`*.github.io` atau path `/nostradamus/`), browser **tidak akan pernah memanggil `/api/news/rss` atau URL yang tidak ada**, sehingga konsol browser 100% bersih dari error 404.
 
----
-
-## 5. Klasifikasi Sentimen Berita Objektif (`MarketNewsSentiment.tsx` & `liveMarketFetcher.ts`)
-
-- Menghapus fallback default `'RISK_ON'` (`SENTIMEN POSITIF // BULLISH`) dan menerapkan **Weighted Lexicon Polarity Scorer** dwibahasa (Indonesia & Inggris) pada gabungan `title` + `summary`.
-- Menambahkan kategori `'NEUTRAL'` (`SENTIMEN NETRAL // OBJEKTIF`) serta memastikan berita negatif/risiko/kesulitan finansial diklasifikasikan secara objektif sebagai `'RISK_OFF'` (`SENTIMEN NEGATIF // RISK-OFF`).
-
----
-
-## 6. Perbaikan Error Deploy GitHub Actions (`ERESOLVE` `vite` vs `esbuild`)
-
-- Memperbarui `"esbuild"` di `package.json` menjadi `"^0.27.0"` agar kompatibel dengan `vite@8.3.6` (`peerOptional esbuild@"^0.27.0 || ^0.28.0"`).
-- Memperbarui `.github/workflows/deploy-pages.yml` dengan `node-version: 22` dan `npm install --legacy-peer-deps --no-audit --no-fund`, serta memperbarui `public/static-market-snapshot.json` dan bundle `/docs`.
+### B. Sinkronisasi Penuh Harga Riil Seluruh Emiten BEI (`.JK`) di Screener & Keranjang
+1. **Verifikasi & Penarikan Batch Seluruh Emiten BEI (`.JK`) dari Yahoo Finance**:
+   - Memperbarui `src/data/idxAllEmitenCatalog.ts` dan `scripts/generate-static-market-bundle.mjs` agar memverifikasi dan menarik harga pasar riil (`lastPrice`, `change1D`, `return30D`, `closes`, `beta1Y`, `volatilityAnn`) untuk **seluruh emiten BEI (`.JK`) yang aktif di Yahoo Finance** tanpa batas `slice(0, 120)`.
+   - Setiap emiten di Screener dan Keranjang 1 & 2 langsung diinisialisasi menggunakan harga penutupan dan persentase perubahan (`1D` & `30D`) riil dari Yahoo Finance.
+2. **Rebuild Penuh `/docs` & Root Assets**:
+   - Menjalankan generator snapshot penuh dan mem-build ulang `docs/` serta menyalin `static-market-snapshot.json` ke root `/` agar saat Anda melakukan `git push`, GitHub Pages langsung menampilkan harga terbaru seluruh emiten tanpa satu pun error 404 di konsol.

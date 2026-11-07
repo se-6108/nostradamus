@@ -47,7 +47,7 @@ import { ArchitectureVault } from './components/ArchitectureVault';
 import { GitHubCloudSyncModal } from './components/GitHubCloudSyncModal';
 import { Sun, Moon, Cloud, RefreshCw } from 'lucide-react';
 
-const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v5_jci956';
+const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v6_realpx';
 const PORTFOLIO_CACHE_KEY = 'nostradamus_dmu24_portfolio_v4';
 const THEME_CACHE_KEY = 'nostradamus_theme_mode_v1';
 
@@ -252,8 +252,19 @@ export default function App() {
       setIsSyncingCloud(true);
       try {
         const { bundle, sha } = await pullStateFromGitHubRepo(cfg);
+        const targetBuffer =
+          typeof bundle.rebalanceBufferPct === 'number' ? bundle.rebalanceBufferPct : 40;
+        const freshBaseUniverse = buildIdx100StockUniverse(targetBuffer);
         if (Array.isArray(bundle.stocks) && bundle.stocks.length > 0) {
-          setStocks(rankUniverseWithBuffer(bundle.stocks, bundle.rebalanceBufferPct ?? 40));
+          const freshTickerSet = new Set(freshBaseUniverse.map((s) => s.ticker));
+          const customUserStocks = bundle.stocks.filter(
+            (s) => s && s.ticker && !freshTickerSet.has(s.ticker)
+          );
+          setStocks(
+            rankUniverseWithBuffer([...customUserStocks, ...freshBaseUniverse], targetBuffer)
+          );
+        } else {
+          setStocks(freshBaseUniverse);
         }
         if (Array.isArray(bundle.holdings)) {
           setHoldings(bundle.holdings);
@@ -563,13 +574,16 @@ export default function App() {
     handleMasterSyncAll(false, idx100);
   };
 
-  // On initial mount: pull from GitHub Repo if configured, and run Master Sync silently
+  // On initial mount: pull portfolio state from GitHub Repo if configured, then run Master Sync
   useEffect(() => {
-    const cfg = loadGitHubCloudConfig();
-    if (isGitHubCloudConfigured(cfg)) {
-      handlePullFromGitHub(cfg, true);
-    }
-    handleMasterSyncAll(true);
+    const initSync = async () => {
+      const cfg = loadGitHubCloudConfig();
+      if (isGitHubCloudConfigured(cfg)) {
+        await handlePullFromGitHub(cfg, true);
+      }
+      await handleMasterSyncAll(true);
+    };
+    initSync();
   }, []);
 
   const handleAddStock = (newStock: StockMetrics) => {
