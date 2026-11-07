@@ -1,183 +1,296 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { NewsSentimentItem } from '../types/quant';
-import { decodeHtmlEntities } from '../utils/liveMarketFetcher';
-import { ExternalLink, Globe } from 'lucide-react';
+import { classifyHeadlineSentiment, decodeHtmlEntities } from '../utils/liveMarketFetcher';
+import { ExternalLink, Newspaper, Globe2, MapPin, Filter } from 'lucide-react';
 
 interface MarketNewsSentimentProps {
   news: NewsSentimentItem[];
-  isLoadingNews: boolean;
+  isLoadingNews?: boolean;
 }
+
+type SentimentFilterType = 'ALL' | NewsSentimentItem['sentiment'];
 
 export function MarketNewsSentiment({
   news,
-  isLoadingNews
+  isLoadingNews = false
 }: MarketNewsSentimentProps) {
-  const [regionFilter, setRegionFilter] = useState<'ALL' | 'DOMESTIC' | 'GLOBAL'>('ALL');
+  const [sentimentFilter, setSentimentFilter] = useState<SentimentFilterType>('ALL');
+
+  // Re-evaluate sentiment objectively using title + summary so no negative or neutral article is ever mislabeled positive
+  const objectiveNews = useMemo(() => {
+    return news.map((item) => {
+      const region: 'DOMESTIC' | 'GLOBAL' =
+        item.region === 'DOMESTIC' ? 'DOMESTIC' : 'GLOBAL';
+      const cleanTitle = decodeHtmlEntities(item.title || '');
+      const cleanSummary = item.summary ? decodeHtmlEntities(item.summary) : undefined;
+      const evaluated = classifyHeadlineSentiment(cleanTitle, region, cleanSummary);
+      return {
+        ...item,
+        title: cleanTitle,
+        summary: cleanSummary,
+        sentiment: evaluated.sentiment,
+        impactedSectors:
+          item.impactedSectors && item.impactedSectors.length > 0
+            ? item.impactedSectors
+            : evaluated.impactedSectors
+      };
+    });
+  }, [news]);
+
+  const counts = useMemo(() => {
+    return {
+      ALL: objectiveNews.length,
+      RISK_ON: objectiveNews.filter((n) => n.sentiment === 'RISK_ON').length,
+      RISK_OFF: objectiveNews.filter((n) => n.sentiment === 'RISK_OFF').length,
+      HAWKISH_RATES: objectiveNews.filter((n) => n.sentiment === 'HAWKISH_RATES').length,
+      COMMODITY_BULL: objectiveNews.filter((n) => n.sentiment === 'COMMODITY_BULL').length,
+      NEUTRAL: objectiveNews.filter((n) => n.sentiment === 'NEUTRAL').length
+    };
+  }, [objectiveNews]);
 
   const filteredNews = useMemo(() => {
-    if (regionFilter === 'ALL') return news;
-    return news.filter((item) => (item.region || 'GLOBAL') === regionFilter);
-  }, [news, regionFilter]);
+    if (sentimentFilter === 'ALL') return objectiveNews;
+    return objectiveNews.filter((n) => n.sentiment === sentimentFilter);
+  }, [objectiveNews, sentimentFilter]);
 
-  const domesticCount = useMemo(
-    () => news.filter((item) => item.region === 'DOMESTIC').length,
-    [news]
+  const domesticNews = filteredNews.filter(
+    (n) => n.region === 'DOMESTIC' || (!n.region && n.id.startsWith('dom'))
   );
-  const globalCount = useMemo(
-    () => news.filter((item) => (item.region || 'GLOBAL') === 'GLOBAL').length,
-    [news]
+  const globalNews = filteredNews.filter(
+    (n) => n.region === 'GLOBAL' || (!n.region && !n.id.startsWith('dom'))
   );
 
-  const getSentimentLabel = (sentiment: NewsSentimentItem['sentiment']) => {
+  const getSentimentBadge = (sentiment: NewsSentimentItem['sentiment']) => {
     switch (sentiment) {
       case 'RISK_ON':
-        return { text: 'SENTIMEN POSITIF // BULLISH', color: 'text-[#0D5C46] font-bold' };
+        return {
+          label: 'SENTIMEN POSITIF // BULLISH',
+          color: 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
+        };
       case 'COMMODITY_BULL':
-        return { text: 'KATALIS KOMODITAS', color: 'text-[#0284C7] bb-cyan font-bold' };
+        return {
+          label: 'KATALIS KOMODITAS',
+          color: 'text-[#0284C7] bb-cyan border-[#0284C7]/40 bg-[#0284C7]/10'
+        };
       case 'HAWKISH_RATES':
-        return { text: 'WASPADA SUKU BUNGA / KURS', color: 'text-[#D97706] bb-amber font-bold' };
+        return {
+          label: 'WASPADA SUKU BUNGA // KURS',
+          color: 'text-[#D97706] bb-amber border-[#F59E0B]/40 bg-[#F59E0B]/10'
+        };
       case 'RISK_OFF':
-        return { text: 'SENTIMEN DEFENSIF // RISK-OFF', color: 'text-[#9E2A2B] font-bold' };
+        return {
+          label: 'SENTIMEN NEGATIF // RISK-OFF',
+          color: 'text-[#9E2A2B] border-[#E11D48]/40 bg-[#E11D48]/10'
+        };
+      case 'NEUTRAL':
+      default:
+        return {
+          label: 'SENTIMEN NETRAL // OBJEKTIF',
+          color: 'text-neutral-500 border-neutral-400/40 bg-neutral-500/10'
+        };
     }
   };
 
-  return (
-    <section
-      id="macro-news-desk"
-      className="bg-[#FFFFFF] border border-[#E4E2DD] border-t-2 border-t-[#F59E0B] rounded-xs p-5 sm:p-6 space-y-5"
-    >
-      {/* Top Header & Region Filter Tabs */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DD] pb-4">
+  const renderNewsCard = (item: NewsSentimentItem) => {
+    const badge = getSentimentBadge(item.sentiment);
+    return (
+      <a
+        key={item.id}
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group block p-4 bg-[#FAF9F6] border border-[#E4E2DD] hover:border-[#F59E0B] rounded-xs transition-all flex flex-col justify-between"
+      >
         <div>
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#D97706] bb-amber">
-            <Globe className="w-3.5 h-3.5" />
-            <span>
-              LIVE FINANCIAL NEWS WIRE // DALAM NEGERI &amp; LUAR NEGERI{' '}
-              {isLoadingNews ? '(MENYINKRONKAN RSS...)' : '(✓ SYNCED)'}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider mb-2">
+            <span className={`px-2 py-0.5 rounded-xs border ${badge.color}`}>
+              {badge.label}
+            </span>
+            <span className="text-neutral-400 tabular-nums">
+              {item.source} · {item.publishedAt}
             </span>
           </div>
-          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#111315] mt-0.5">
-            Berita Pasar Saham Indonesia (IHSG) &amp; Makroekonomi Global
-          </h2>
-          <p className="text-xs text-neutral-600 mt-0.5">
-            Sinkronisasi berita keuangan langsung dari feed RSS dalam negeri (CNBC Indonesia, Antara Ekonomi) dan luar negeri (MarketWatch, CNBC Global) lengkap dengan tautan artikel asli.
-          </p>
+
+          <h4 className="text-sm font-bold text-[#111315] group-hover:text-[#D97706] transition-colors leading-snug">
+            {item.title}
+          </h4>
+
+          {item.summary && (
+            <p className="text-xs text-neutral-600 mt-1.5 leading-relaxed line-clamp-2">
+              {item.summary}
+            </p>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Region Filter Tabs */}
-          <div className="flex items-center gap-1 p-1 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs">
-            <button
-              type="button"
-              onClick={() => setRegionFilter('ALL')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-xs transition-colors cursor-pointer ${
-                regionFilter === 'ALL'
-                  ? 'bg-[#D97706] text-white bb-btn-primary'
-                  : 'text-neutral-600 hover:text-[#111315]'
-              }`}
-            >
-              Semua ({news.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setRegionFilter('DOMESTIC')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-xs transition-colors cursor-pointer ${
-                regionFilter === 'DOMESTIC'
-                  ? 'bg-[#059669] text-white'
-                  : 'text-neutral-600 hover:text-[#111315]'
-              }`}
-            >
-              Dalam Negeri ({domesticCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setRegionFilter('GLOBAL')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-xs transition-colors cursor-pointer ${
-                regionFilter === 'GLOBAL'
-                  ? 'bg-[#0284C7] text-white'
-                  : 'text-neutral-600 hover:text-[#111315]'
-              }`}
-            >
-              Luar Negeri ({globalCount})
-            </button>
+        <div className="mt-3 pt-2.5 border-t border-[#E4E2DD]/70 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[10px] font-bold uppercase text-neutral-400 mr-1">
+              Sektor Terdampak:
+            </span>
+            {item.impactedSectors.map((sec) => (
+              <span
+                key={sec}
+                className="text-[10px] font-bold px-1.5 py-0.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs text-[#0284C7] bb-cyan"
+              >
+                {sec}
+              </span>
+            ))}
           </div>
+
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#D97706] bb-amber group-hover:underline">
+            <span>Baca Sumber</span>
+            <ExternalLink className="w-3 h-3" />
+          </span>
+        </div>
+      </a>
+    );
+  };
+
+  return (
+    <section className="bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs p-5 sm:p-6 space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DD] pb-3.5">
+        <div className="flex items-center gap-2.5">
+          <Newspaper className="w-4 h-4 text-[#D97706] bb-amber shrink-0" />
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#D97706] bb-amber block">
+              REAL-TIME FINANCIAL NEWS WIRE // DOMESTIC (RI) &amp; INTERNATIONAL
+            </span>
+            <h3 className="text-base sm:text-lg font-bold tracking-tight text-[#111315]">
+              Katalis Berita Ekonomi Dalam Negeri &amp; Global (Klasifikasi Sentimen Objektif)
+            </h3>
+          </div>
+        </div>
+
+        <div className="text-[11px] font-bold uppercase tracking-wider text-[#0284C7] bb-cyan">
+          {isLoadingNews ? 'MENYINKRONKAN RSS...' : `${objectiveNews.length} BERITA AKTIF`}
         </div>
       </div>
 
-      {/* News Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredNews.map((item) => {
-          const badge = getSentimentLabel(item.sentiment);
-          const isDomestic = item.region === 'DOMESTIC';
-          const cleanTitle = decodeHtmlEntities(item.title);
-          const cleanSummary = item.summary ? decodeHtmlEntities(item.summary) : undefined;
+      {/* Objective Sentiment Distribution & Filter Bar */}
+      <div className="p-3 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-[#111315]">
+          <Filter className="w-3.5 h-3.5 text-[#D97706] shrink-0" />
+          <span>Filter Klasifikasi Objektif:</span>
+        </div>
 
-          return (
-            <article
-              key={item.id}
-              className={`p-4 bg-[#FAF9F6] border border-[#E4E2DD] border-l-2 ${
-                isDomestic ? 'border-l-[#059669]' : 'border-l-[#0284C7]'
-              } rounded-xs flex flex-col justify-between gap-3`}
-            >
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={
-                        isDomestic
-                          ? 'text-[#0D5C46]'
-                          : 'text-[#0284C7] bb-cyan'
-                      }
-                    >
-                      [{isDomestic ? 'DALAM NEGERI · RI' : 'LUAR NEGERI · GLOBAL'}]
-                    </span>
-                    <span className="text-neutral-400">·</span>
-                    <span className="text-[#D97706] bb-amber">{item.source}</span>
-                    <span className="text-neutral-400">·</span>
-                    <span className="text-neutral-500">{item.publishedAt}</span>
-                  </div>
-                  <span className={badge.color}>{badge.text}</span>
-                </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('ALL')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'ALL'
+                ? 'bg-[#D97706] text-white border-[#D97706] bb-btn-primary'
+                : 'bg-[#FFFFFF] text-neutral-600 border-[#E4E2DD] hover:border-[#F59E0B]'
+            }`}
+          >
+            Semua ({counts.ALL})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('RISK_OFF')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'RISK_OFF'
+                ? 'bg-[#E11D48] text-white border-[#E11D48]'
+                : 'bg-[#FFFFFF] text-[#9E2A2B] border-[#E4E2DD] hover:border-[#E11D48]'
+            }`}
+          >
+            Negatif / Risk-Off ({counts.RISK_OFF})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('RISK_ON')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'RISK_ON'
+                ? 'bg-[#059669] text-white border-[#059669]'
+                : 'bg-[#FFFFFF] text-[#0D5C46] border-[#E4E2DD] hover:border-[#059669]'
+            }`}
+          >
+            Positif / Bullish ({counts.RISK_ON})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('HAWKISH_RATES')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'HAWKISH_RATES'
+                ? 'bg-[#D97706] text-white border-[#D97706]'
+                : 'bg-[#FFFFFF] text-[#D97706] bb-amber border-[#E4E2DD] hover:border-[#F59E0B]'
+            }`}
+          >
+            Waspada Bunga / Kurs ({counts.HAWKISH_RATES})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('COMMODITY_BULL')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'COMMODITY_BULL'
+                ? 'bg-[#0284C7] text-white border-[#0284C7]'
+                : 'bg-[#FFFFFF] text-[#0284C7] bb-cyan border-[#E4E2DD] hover:border-[#0284C7]'
+            }`}
+          >
+            Katalis Komoditas ({counts.COMMODITY_BULL})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentimentFilter('NEUTRAL')}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-xs border transition-colors cursor-pointer ${
+              sentimentFilter === 'NEUTRAL'
+                ? 'bg-neutral-700 text-white border-neutral-700'
+                : 'bg-[#FFFFFF] text-neutral-500 border-[#E4E2DD] hover:border-neutral-400'
+            }`}
+          >
+            Netral / Objektif ({counts.NEUTRAL})
+          </button>
+        </div>
+      </div>
 
-                <h3 className="text-sm font-bold text-[#111315] leading-snug">
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-[#D97706] hover:underline transition-colors"
-                  >
-                    {cleanTitle}
-                  </a>
-                </h3>
+      {/* 2-Column Split: Dalam Negeri (Left) & Luar Negeri (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Column 1: Berita Ekonomi & Pasar Modal Dalam Negeri (Indonesia) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E4E2DD]">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0D5C46]">
+              <MapPin className="w-3.5 h-3.5" />
+              <span>DALAM NEGERI (INDONESIA / BEI / BI)</span>
+            </div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase">
+              {domesticNews.length} ARTIKEL
+            </span>
+          </div>
 
-                {cleanSummary && (
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    {cleanSummary}
-                  </p>
-                )}
+          <div className="space-y-3">
+            {domesticNews.length > 0 ? (
+              domesticNews.map(renderNewsCard)
+            ) : (
+              <div className="p-4 text-xs text-neutral-500 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs">
+                Tidak ada berita domestik pada kategori filter sentimen ini.
               </div>
+            )}
+          </div>
+        </div>
 
-              <div className="pt-2.5 border-t border-[#E4E2DD]/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <div className="text-neutral-500">
-                  <span className="font-bold">SEKTOR TERDAMPAK: </span>
-                  <span className="font-bold text-[#0284C7] bb-cyan">
-                    {item.impactedSectors.join(' · ')}
-                  </span>
-                </div>
+        {/* Column 2: Berita Ekonomi & Makro Luar Negeri (Global) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E4E2DD]">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#0284C7] bb-cyan">
+              <Globe2 className="w-3.5 h-3.5" />
+              <span>LUAR NEGERI (THE FED / WALL STREET / KOMODITAS GLOBAL)</span>
+            </div>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase">
+              {globalNews.length} ARTIKEL
+            </span>
+          </div>
 
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-bold text-[#D97706] bb-amber hover:underline shrink-0"
-                >
-                  <span>Baca Berita Lengkap</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+          <div className="space-y-3">
+            {globalNews.length > 0 ? (
+              globalNews.map(renderNewsCard)
+            ) : (
+              <div className="p-4 text-xs text-neutral-500 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs">
+                Tidak ada berita global pada kategori filter sentimen ini.
               </div>
-            </article>
-          );
-        })}
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

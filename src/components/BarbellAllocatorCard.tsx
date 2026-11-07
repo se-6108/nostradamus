@@ -7,7 +7,7 @@ import {
   getBasketSelectionReason
 } from '../utils/quantEngine';
 import { MetricTooltip } from './MetricTooltip';
-import { Calculator, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Calculator, SlidersHorizontal, RefreshCw } from 'lucide-react';
 
 interface BarbellAllocatorCardProps {
   regime: MarketRegime;
@@ -27,7 +27,6 @@ export function BarbellAllocatorCard({
   stocks,
   capitalIdr,
   onChangeCapital,
-  onLoadIdx100Universe,
   onTriggerSweetAlert
 }: BarbellAllocatorCardProps) {
   const [rawInput, setRawInput] = useState(capitalIdr.toString());
@@ -77,20 +76,25 @@ export function BarbellAllocatorCard({
             </span>
             <span className="text-neutral-400">·</span>
             <span
-              className={
+              title="Seluruh emiten JCI telah tersinkronisasi ke dalam kalkulator keranjang"
+              className={`inline-flex items-center gap-1 ${
                 liveFetchedCount === stocks.length
                   ? 'text-[#0D5C46] font-bold'
                   : 'text-[#D97706] bb-amber font-bold'
-              }
+              }`}
             >
-              ✓ {liveFetchedCount}/{stocks.length} Saham Synced Live
+              <RefreshCw className="w-3 h-3" />
+              <span>
+                {liveFetchedCount}/{stocks.length} Emiten JCI
+              </span>
             </span>
           </div>
           <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#111315] mt-0.5">
             Kalkulator Alokasi Multifaktor &amp; Ukuran Lot BEI (1 Lot = 100 Lembar)
           </h2>
           <p className="text-xs text-neutral-600 mt-0.5">
-            Pemilihan saham Keranjang 1 &amp; Keranjang 2 dihitung secara dinamis dari harga &amp; momentum live Yahoo Finance (
+            Pemilihan saham Keranjang 1 &amp; Keranjang 2 dievaluasi dari seluruh{' '}
+            <strong>{stocks.length} emiten JCI (.JK)</strong> (
             <span className="font-bold text-[#0284C7] bb-cyan">
               {analytics.equityExposureWeightPct}% Ekuitas Multifaktor : {analytics.cashReserveWeightPct}% Kas Pasar Uang
             </span>
@@ -194,17 +198,6 @@ export function BarbellAllocatorCard({
                 </button>
               ))}
             </div>
-
-            {stocks.length < 50 && onLoadIdx100Universe && (
-              <button
-                type="button"
-                onClick={onLoadIdx100Universe}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-[#059669]/15 text-[#0D5C46] border border-[#059669]/40 rounded-xs hover:bg-[#059669]/25 transition-colors cursor-pointer"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Perluas ke 100 Saham BEI</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -230,33 +223,35 @@ export function BarbellAllocatorCard({
 
       {/* Portfolio-Level Risk & Factor Telemetry Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 p-3.5 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs tabular-nums">
-        <div className="px-2">
+        <div className="px-2 text-center">
           <div className="text-[11px] font-semibold text-neutral-500">
             <MetricTooltip
               label="Skor Komposit Multifaktor"
               title="Skor Komposit Multifaktor (Skala 1–10)"
               laymanExplanation="Nilai rapor rata-rata dari seluruh saham pilihan di Keranjang 1 & 2, dihitung dari ketenangan harga, tren kenaikan, murahnya harga dibanding laba, dan kesehatan utang."
               practicalGuide="Di atas 7,0 = Portofolio sangat berkualitas; di bawah 5,5 = Banyak saham yang sedang melemah."
+              align="center"
             />
           </div>
           <span className="text-lg font-bold text-[#0D5C46] block mt-0.5">
             {analytics.portfolioQmj.toFixed(2)} / 10.0
           </span>
         </div>
-        <div className="px-2 border-l border-[#E4E2DD]">
+        <div className="px-2 border-l border-[#E4E2DD] text-center">
           <div className="text-[11px] font-semibold text-neutral-500">
             <MetricTooltip
               label="Eksposur Ekuitas vs Kas"
               title="Pembagian Modal Saham vs Kas"
               laymanExplanation="Perbandingan antara uang yang dibelikan saham aktif vs uang yang disimpan sebagai cadangan kas aman."
               practicalGuide="Misal 45% / 55% berarti dari Rp 100 Juta, Rp 45 Juta dibelikan saham dan Rp 55 Juta disimpan di kas/pasar uang."
+              align="center"
             />
           </div>
           <span className="text-lg font-bold text-[#0284C7] bb-cyan block mt-0.5">
             {analytics.equityExposureWeightPct}% / {analytics.cashReserveWeightPct}%
           </span>
         </div>
-        <div className="px-2 border-l border-[#E4E2DD]">
+        <div className="px-2 border-l border-[#E4E2DD] text-center">
           <div className="text-[11px] font-semibold text-neutral-500">
             <MetricTooltip
               label="Estimasi OOS Net Sharpe"
@@ -270,7 +265,7 @@ export function BarbellAllocatorCard({
             {analytics.sharpeEstimate.toFixed(2)} (Net Fee BEI)
           </span>
         </div>
-        <div className="px-2 border-l border-[#E4E2DD]">
+        <div className="px-2 border-l border-[#E4E2DD] text-center">
           <div className="text-[11px] font-semibold text-neutral-500">
             <MetricTooltip
               label="Cadangan Kas Vol-Scaling"
@@ -317,7 +312,8 @@ export function BarbellAllocatorCard({
 
           <div className="divide-y divide-[#E4E2DD]/70 text-xs">
             {lowVolCorePositions.map((pos, idx) => {
-              const isPos = pos.stock.change1D >= 0;
+              const is1DPos = pos.stock.change1D >= 0;
+              const is30DPos = pos.stock.return30D >= 0;
               const sleeveScore = computeSleeveSpecificScore(
                 pos.stock,
                 'DEFENSIVE',
@@ -347,20 +343,33 @@ export function BarbellAllocatorCard({
                       </span>
                       <span
                         className={`text-[11px] font-bold ${
-                          isPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
+                          is1DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
                         }`}
                       >
-                        ({isPos ? '+' : ''}
+                        ({is1DPos ? '+' : ''}
                         {pos.stock.change1D.toFixed(2)}%)
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-xs border ${
+                        className={`text-[11px] font-bold ${
+                          is30DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
+                        }`}
+                      >
+                        [30D: {is30DPos ? '+' : ''}
+                        {pos.stock.return30D.toFixed(1)}%]
+                      </span>
+                      <span
+                        title={
+                          pos.stock.isLiveFetched
+                            ? 'Data Tersinkronisasi Live'
+                            : 'Menunggu Sinkronisasi'
+                        }
+                        className={`inline-flex items-center justify-center p-1 rounded-xs border ${
                           pos.stock.isLiveFetched
                             ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
                             : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
                         }`}
                       >
-                        {pos.stock.isLiveFetched ? '✓ SYNCED' : '⏳ PENDING'}
+                        <RefreshCw className="w-2.5 h-2.5" />
                       </span>
                     </div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">
@@ -417,7 +426,8 @@ export function BarbellAllocatorCard({
 
           <div className="divide-y divide-[#E4E2DD]/70 text-xs">
             {momentumValuePositions.map((pos, idx) => {
-              const isPos = pos.stock.change1D >= 0;
+              const is1DPos = pos.stock.change1D >= 0;
+              const is30DPos = pos.stock.return30D >= 0;
               const sleeveScore = computeSleeveSpecificScore(
                 pos.stock,
                 'AGGRESSIVE',
@@ -447,20 +457,33 @@ export function BarbellAllocatorCard({
                       </span>
                       <span
                         className={`text-[11px] font-bold ${
-                          isPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
+                          is1DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
                         }`}
                       >
-                        ({isPos ? '+' : ''}
+                        ({is1DPos ? '+' : ''}
                         {pos.stock.change1D.toFixed(2)}%)
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-xs border ${
+                        className={`text-[11px] font-bold ${
+                          is30DPos ? 'text-[#0D5C46]' : 'text-[#9E2A2B]'
+                        }`}
+                      >
+                        [30D: {is30DPos ? '+' : ''}
+                        {pos.stock.return30D.toFixed(1)}%]
+                      </span>
+                      <span
+                        title={
+                          pos.stock.isLiveFetched
+                            ? 'Data Tersinkronisasi Live'
+                            : 'Menunggu Sinkronisasi'
+                        }
+                        className={`inline-flex items-center justify-center p-1 rounded-xs border ${
                           pos.stock.isLiveFetched
                             ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
                             : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
                         }`}
                       >
-                        {pos.stock.isLiveFetched ? '✓ SYNCED' : '⏳ PENDING'}
+                        <RefreshCw className="w-2.5 h-2.5" />
                       </span>
                     </div>
                     <div className="text-[11px] text-neutral-500 mt-0.5">

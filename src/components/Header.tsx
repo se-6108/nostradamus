@@ -1,6 +1,6 @@
 import { WorkspaceTabId } from '../types/quant';
 import { NostradamusLogo } from './NostradamusLogo';
-import { RefreshCw, CheckCircle2, Clock, Cloud, Compass } from 'lucide-react';
+import { RefreshCw, Clock, Cloud, Compass } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: WorkspaceTabId;
@@ -15,14 +15,6 @@ interface HeaderProps {
   onMasterSyncAll: () => void;
 }
 
-const WORKSPACE_TABS: { id: WorkspaceTabId; label: string; shortDesc: string }[] = [
-  { id: 'command', label: '01. Command & Allocator', shortDesc: 'Sentimen & Keranjang 1–2' },
-  { id: 'screener', label: '02. Multifactor Screener', shortDesc: '19–100 Saham BEI (.JK)' },
-  { id: 'portfolio', label: '03. Portfolio & Cloud', shortDesc: 'Evaluasi & GitHub Sync' },
-  { id: 'backtest', label: '04. Walk-Forward Audit', shortDesc: 'Uji Historis & Python' },
-  { id: 'macro', label: '05. Macro & News Wire', shortDesc: 'Berita RI & Global Live' }
-];
-
 export function Header({
   activeTab,
   onSelectTab,
@@ -36,6 +28,18 @@ export function Header({
   onMasterSyncAll
 }: HeaderProps) {
   const allSynced = totalStockCount > 0 && syncedCount >= totalStockCount;
+
+  const workspaceTabs: { id: WorkspaceTabId; label: string; shortDesc: string }[] = [
+    { id: 'command', label: '01. Command & Allocator', shortDesc: 'Sentimen & Keranjang 1–2' },
+    {
+      id: 'screener',
+      label: '02. Multifactor Screener',
+      shortDesc: `Full JCI (${totalStockCount} Saham BEI)`
+    },
+    { id: 'portfolio', label: '03. Portfolio & Cloud', shortDesc: 'Evaluasi & GitHub Sync' },
+    { id: 'backtest', label: '04. Walk-Forward Audit', shortDesc: 'Uji Historis & Python' },
+    { id: 'macro', label: '05. Macro & News Wire', shortDesc: 'Berita RI & Global Live' }
+  ];
 
   return (
     <header className="bg-[#FFFFFF] border-b border-[#E4E2DD]">
@@ -73,15 +77,16 @@ export function Header({
                 </span>
                 <span className="text-neutral-400">·</span>
                 <span
+                  title="Seluruh emiten JCI telah tersinkronisasi"
                   className={`inline-flex items-center gap-1 font-bold ${
                     allSynced ? 'text-[#0D5C46]' : 'text-[#D97706] bb-amber'
                   }`}
                 >
-                  <CheckCircle2 className="w-3 h-3 shrink-0" />
+                  <RefreshCw className="w-3 h-3 shrink-0" />
                   <span>
                     {isMasterSyncing && syncStatusLabel
                       ? syncStatusLabel
-                      : `✓ ${syncedCount}/${totalStockCount} Saham Synced`}
+                      : `${syncedCount}/${totalStockCount} Emiten JCI`}
                   </span>
                 </span>
               </div>
@@ -95,7 +100,7 @@ export function Header({
             type="button"
             onClick={onMasterSyncAll}
             disabled={isMasterSyncing}
-            title="Sinkronkan seluruh harga saham BEI (hingga 100+ emiten), IHSG, Global Macro, dan Berita RSS Live dalam 1 klik"
+            title="Sinkronkan seluruh harga saham JCI/BEI, IHSG, Global Macro, dan Berita RSS Live dalam 1 klik"
             className="bb-btn-primary inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#D97706] hover:bg-[#B45309] rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
           >
             <RefreshCw
@@ -126,7 +131,7 @@ export function Header({
             aria-label="Menu Utama Terminal Quant"
             className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 w-full"
           >
-            {WORKSPACE_TABS.map((tab) => {
+            {workspaceTabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
                 <button

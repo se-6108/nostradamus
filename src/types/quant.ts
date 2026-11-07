@@ -29,7 +29,7 @@ export interface NewsSentimentItem {
   url: string;
   region?: 'DOMESTIC' | 'GLOBAL';
   summary?: string;
-  sentiment: 'RISK_ON' | 'RISK_OFF' | 'COMMODITY_BULL' | 'HAWKISH_RATES';
+  sentiment: 'RISK_ON' | 'RISK_OFF' | 'COMMODITY_BULL' | 'HAWKISH_RATES' | 'NEUTRAL';
   impactedSectors: string[];
 }
 

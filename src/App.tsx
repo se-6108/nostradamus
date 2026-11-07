@@ -45,9 +45,9 @@ import { MarketNewsSentiment } from './components/MarketNewsSentiment';
 import { SkepticalBacktestLab } from './components/SkepticalBacktestLab';
 import { ArchitectureVault } from './components/ArchitectureVault';
 import { GitHubCloudSyncModal } from './components/GitHubCloudSyncModal';
-import { Sun, Moon, Cloud, ArrowRight } from 'lucide-react';
+import { Sun, Moon, Cloud, RefreshCw } from 'lucide-react';
 
-const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v4';
+const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v5_jci956';
 const PORTFOLIO_CACHE_KEY = 'nostradamus_dmu24_portfolio_v4';
 const THEME_CACHE_KEY = 'nostradamus_theme_mode_v1';
 
@@ -75,7 +75,7 @@ function loadScreenerCache(): ScreenerCachePayload | null {
     const parsed = JSON.parse(raw) as ScreenerCachePayload;
     if (
       Array.isArray(parsed.stocks) &&
-      parsed.stocks.length > 0 &&
+      parsed.stocks.length >= 900 &&
       typeof parsed.stocks[0].dmuCompositeScore === 'number' &&
       parsed.liveIhsgQuote?.lastPrice
     ) {
@@ -157,7 +157,7 @@ export default function App() {
     )
   );
   const [stocks, setStocks] = useState<StockMetrics[]>(
-    () => initialScreenerCache?.stocks || buildQuantStockList()
+    () => initialScreenerCache?.stocks || buildIdx100StockUniverse(40)
   );
   const [holdings, setHoldings] = useState<PortfolioHolding[]>(
     () => initialPortfolioCache?.holdings || DEFAULT_USER_PORTFOLIO_HOLDINGS
@@ -599,7 +599,7 @@ export default function App() {
   };
 
   const handleResetUniverse = () => {
-    const defaultList = buildQuantStockList();
+    const defaultList = buildIdx100StockUniverse(rebalanceBufferPct);
     setStocks(defaultList);
     handleMasterSyncAll(true, defaultList);
   };
@@ -659,7 +659,7 @@ export default function App() {
   const handleResetCacheAndPortfolio = () => {
     localStorage.removeItem(SCREENER_CACHE_KEY);
     localStorage.removeItem(PORTFOLIO_CACHE_KEY);
-    const defaultList = buildQuantStockList();
+    const defaultList = buildIdx100StockUniverse(40);
     setStocks(defaultList);
     setHoldings(DEFAULT_USER_PORTFOLIO_HOLDINGS);
     setCashReserveIdr(15000000);
@@ -696,7 +696,7 @@ export default function App() {
       .map(
         (pos) => `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #E4E2DD;font-size:12px;font-variant-numeric:tabular-nums;">
-          <span><strong style="color:#D97706;">${pos.stock.ticker}</strong> @ Rp ${pos.stock.lastPrice.toLocaleString('id-ID')} <strong style="color:#0D5C46;font-size:10px;">(✓ SYNCED)</strong> · Bobot ${pos.totalPortfolioWeightPct.toFixed(1)}% (1D ${pos.stock.change1D >= 0 ? '+' : ''}${pos.stock.change1D.toFixed(2)}% · 30D ${pos.stock.return30D >= 0 ? '+' : ''}${pos.stock.return30D.toFixed(1)}%)</span>
+          <span><strong style="color:#D97706;">${pos.stock.ticker}</strong> @ Rp ${pos.stock.lastPrice.toLocaleString('id-ID')} · Bobot ${pos.totalPortfolioWeightPct.toFixed(1)}% (<span style="color:${pos.stock.change1D >= 0 ? '#0D5C46' : '#9E2A2B'};font-weight:700;">1D ${pos.stock.change1D >= 0 ? '+' : ''}${pos.stock.change1D.toFixed(2)}%</span> · <span style="color:${pos.stock.return30D >= 0 ? '#0D5C46' : '#9E2A2B'};font-weight:700;">30D ${pos.stock.return30D >= 0 ? '+' : ''}${pos.stock.return30D.toFixed(1)}%</span>)</span>
           <span><strong>${pos.lots.toLocaleString('id-ID')} Lot</strong> · Rp ${pos.allocatedIdr.toLocaleString('id-ID')}</span>
         </div>`
       )
@@ -706,7 +706,7 @@ export default function App() {
       .map(
         (pos) => `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #E4E2DD;font-size:12px;font-variant-numeric:tabular-nums;">
-          <span><strong style="color:#D97706;">${pos.stock.ticker}</strong> @ Rp ${pos.stock.lastPrice.toLocaleString('id-ID')} <strong style="color:#0D5C46;font-size:10px;">(✓ SYNCED)</strong> · Bobot ${pos.totalPortfolioWeightPct.toFixed(1)}% (1D ${pos.stock.change1D >= 0 ? '+' : ''}${pos.stock.change1D.toFixed(2)}% · 30D ${pos.stock.return30D >= 0 ? '+' : ''}${pos.stock.return30D.toFixed(1)}%)</span>
+          <span><strong style="color:#D97706;">${pos.stock.ticker}</strong> @ Rp ${pos.stock.lastPrice.toLocaleString('id-ID')} · Bobot ${pos.totalPortfolioWeightPct.toFixed(1)}% (<span style="color:${pos.stock.change1D >= 0 ? '#0D5C46' : '#9E2A2B'};font-weight:700;">1D ${pos.stock.change1D >= 0 ? '+' : ''}${pos.stock.change1D.toFixed(2)}%</span> · <span style="color:${pos.stock.return30D >= 0 ? '#0D5C46' : '#9E2A2B'};font-weight:700;">30D ${pos.stock.return30D >= 0 ? '+' : ''}${pos.stock.return30D.toFixed(1)}%</span>)</span>
           <span><strong>${pos.lots.toLocaleString('id-ID')} Lot</strong> · Rp ${pos.allocatedIdr.toLocaleString('id-ID')}</span>
         </div>`
       )
@@ -798,8 +798,11 @@ export default function App() {
           <span>·</span>
           <span>Rebalancing Buffer {rebalanceBufferPct}%</span>
           <span>·</span>
-          <span className="text-[#0D5C46] font-bold">
-            ✓ {liveSyncedStockCount}/{stocks.length} Saham Synced
+          <span className="inline-flex items-center gap-1 text-[#0D5C46] font-bold">
+            <RefreshCw className="w-3 h-3" />
+            <span>
+              {liveSyncedStockCount}/{stocks.length} Emiten JCI
+            </span>
           </span>
           <span>·</span>
           <button
@@ -889,41 +892,6 @@ export default function App() {
                     handleGenerateStrategyModal(cap, picks, mode)
                   }
                 />
-
-                {/* Quick Navigation Bridge to Portfolio & Screener Tabs */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('portfolio')}
-                    className="p-4 bg-[#FFFFFF] border border-[#E4E2DD] hover:border-[#F59E0B] rounded-xs text-left flex items-center justify-between transition-colors cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-[#0D5C46]">
-                        03. Evaluasi Portofolio Aktif &amp; GitHub Cloud Sync
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-0.5">
-                        Cek status {holdings.length} saham Anda terhadap Rebalancing Buffer {rebalanceBufferPct}% &amp; sinkronkan ke GitHub Repo.
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-[#D97706] shrink-0" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('screener')}
-                    className="p-4 bg-[#FFFFFF] border border-[#E4E2DD] hover:border-[#0284C7] rounded-xs text-left flex items-center justify-between transition-colors cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-[#0284C7] bb-cyan">
-                        02. Buka Screener 4-Faktor ({stocks.length} Saham BEI · Bisa Muat 100 Saham)
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-0.5">
-                        Lihat rincian skor Low-Vol, Momentum (12-1), Value, dan Size atau muat 100 saham likuid BEI (IDX100).
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-[#0284C7] shrink-0" />
-                  </button>
-                </div>
               </div>
             )}
 

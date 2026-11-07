@@ -6,7 +6,7 @@ on:
       - main
       - master
   schedule:
-    # Automatically refresh Yahoo Finance 100 IDX Stocks + Global Macro + News RSS during IDX trading hours (09:15, 12:15, 16:15 WIB)
+    # Automatically refresh Yahoo Finance Full JCI Stocks + Global Macro + News RSS during IDX trading hours (09:15, 12:15, 16:15 WIB)
     - cron: '15 2,5,9 * * 1-5'
   workflow_dispatch:
 
@@ -29,15 +29,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22 LTS
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
-      - name: Fetch Live Yahoo Finance 100 IDX Stocks, Macro & RSS Snapshot
+      - name: Fetch Live Yahoo Finance Full JCI Snapshot, Macro & RSS
         run: node scripts/generate-static-market-bundle.mjs
 
       - name: Build Production Bundle (dist/)

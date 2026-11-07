@@ -1,79 +1,54 @@
-# Nostradamus Quant — Tata Letak Tab Menu di Bawah Header, Logo Kompas Pelaut & Kamus Hover Bahasa Awam
+# Rencana Implementasi (Revisi Final): Dynamic Full JCI Auto-Discovery (~956 → 1000+ Emiten), Indikator Sync Profesional Tanpa Teks "SYNCED", Perbaikan Tabel Screener, Sentimen Berita Objektif & Fix GitHub Actions
 
-Pembaruan ini menata ulang struktur navigasi agar **Tab Menu Bar berada di bawah baris utama Header** (menghilangkan penumpukan horizontal di kanan layar), mengganti logo dengan **Kompas Pelaut (Mariner's Compass Rose) ala Nostradamus** tanpa unsur mata sama sekali, serta menambahkan **Tooltip Penjelasan Bahasa Awam (saat kursor diarahkan / *hover*)** pada setiap istilah dan metrik kuantitatif.
+## 1. Indikator Sinkronisasi Profesional & Hemat Ruang (Tanpa Teks `"SYNCED"` dan Tanpa Emoji)
 
----
-
-### User Review & Critical Decisions
-
-> [!IMPORTANT]
-> **Tiga Penyempurnaan Utama Sesuai Tangkapan Layar & Masukan Anda:**
-> 1. **Tab Menu Bar Dipindahkan ke Baris Khusus di Bawah Header**:
->    - Baris atas Header kini hanya memuat **Logo Kompas Pelaut + Judul & Waktu Update Terakhir** di sisi kiri, serta tombol **SYNC SEMUA LIVE + GitHub Cloud + Mode Tema** di sisi kanan.
->    - Kelima menu utama (`01. Command & Allocator` s/d `05. Macro & News Wire`) ditempatkan pada **baris navigasi khusus di bawah Header** sehingga ruang jauh lebih lega, proporsional, dan tidak pernah terpotong ke kanan.
-> 2. **Logo Kompas Pelaut (Nautical Mariner's Compass Rose) Tanpa Unsur Mata**:
->    - Menghapus seluruh elemen menyerupai mata dan menggantinya dengan **Kompas Pelaut 8-Penjuru Angin (N-E-S-W Mariner's Compass Rose)** lengkap dengan cincin derajat azimut, penunjuk arah Utara emas-zamrud, dan jarum navigasi maritim.
-> 3. **Tooltip Hover Bahasa Awam pada Seluruh Metrik Quant**:
->    - Setiap metrik teknis dilengkapi indikator *hover* yang langsung menampilkan **arti dalam bahasa sehari-hari (awam)** beserta **cara membacanya secara praktis** tanpa perlu membuka halaman dokumentasi.
+- **Masalah Sebelumnya**: Badge bertuliskan `✓ SYNCED` atau `⏳ PENDING` pada setiap baris saham di Tabel Screener, Keranjang 1 & 2, Global Macro Wire, dan Header memakan banyak ruang horizontal.
+- **Perbaikan**:
+  - Menghapus kata **`SYNCED`** / **`PENDING`** pada badge status per-item di `ScreeningTable.tsx`, `BarbellAllocatorCard.tsx`, `GlobalMacroPulse.tsx`, `MarketRegimeBanner.tsx`, `ActivePortfolioManager.tsx`, dan `Header.tsx`.
+  - Menggantinya dengan **ikon vektor SVG profesional berukuran ringkas (`<RefreshCw className="w-3 h-3" />` / simbol kuantitatif `↻` tanpa emoji)** dengan warna hijau zamrud (`text-[#0D5C46]`) saat sudah tersinkronisasi dan amber (`text-[#D97706]`) saat sedang memuat, dilengkapi atribut `title="Data Tersinkronisasi Live"` saat kursor diarahkan (*hover*).
+  - Hasilnya jauh lebih bersih, institusional, dan menghemat ruang kolom secara signifikan.
 
 ---
 
-### 1. Overview & Core Concept
+## 2. Arsitektur Adaptif Jumlah Emiten JCI (~956 Emiten & Auto-Scaling Realtime)
 
-- **What It Does**: Menyajikan terminal kuantitatif BEI yang ramah dibaca baik oleh analis berpengalaman maupun investor awam berkat penjelasan *hover* instan pada setiap angka, tata letak header dua tingkat yang lega, dan identitas visual Kompas Pelaut.
-- **Target Audience / Persona**: Investor saham Indonesia dan *trader* yang menginginkan kekuatan perhitungan matematis institusional tetapi disajikan dengan bahasa yang membumi, jelas, dan mudah dipahami.
-- **Key Value**: Bebas kebingungan istilah statistik (seperti *Realized Volatility*, *Beta*, *OOS Net Sharpe*, *Rebalancing Buffer*, *Low-Vol*, *Mom 12-1*) karena semuanya dijelaskan secara instan saat kursor diarahkan (*hover*).
-
----
-
-### 2. User Experience & Visual Design
-
-- **Key User Flows**:
-  1. **Navigasi Dua Tingkat yang Lega**: Pengguna melihat baris identitas utama di atas dan baris **5 Tab Menu** yang rapi tepat di bawahnya tanpa ada tombol yang terdesak ke luar layar.
-  2. **Hover Kamus Bahasa Awam (`MetricTooltip`)**: Saat pengguna mengarahkan kursor ke nama metrik mana pun (di Banner Sentimen, Kalkulator Keranjang 1 & 2, Tabel Screener, maupun Evaluasi Portofolio), muncul kotak informasi ringkas berisi:
-     - **Arti Bahasa Awam**: Penjelasan sederhana bebas jargon.
-     - **Panduan Angka**: Patokan praktis apakah angka tersebut bagus, aman, atau perlu diwaspadai.
-- **Visual Identity & Theme**:
-  - **Kompas Pelaut (Mariner's Compass Rose)**: Geometri bintang kompas 8 arah dengan cincin derajat pelayaran kuno ala navigator abad ke-16.
-  - **Hover Tooltip Presisi**: Desain kartu *popover* ringan berbingkai tegas yang otomatis menyesuaikan tema *Dark Terminal* maupun *Daylight Mode*.
+- **Katalog & Mesin Auto-Discovery Emiten BEI (`src/data/idxAllEmitenCatalog.ts` & `src/utils/liveMarketFetcher.ts`)**:
+  - Memuat secara default **seluruh ~956 emiten BEI (`.JK`) per November 2026** lintas 11 sektor IDX-IC agar **Keranjang 1 & 2 (`BarbellAllocatorCard`)** dan **Matriks Screener 4-Faktor (`ScreeningTable`)** selalu mengevaluasi keseluruhan pasar BEI.
+  - Dilengkapi **Dynamic JCI Emiten Auto-Discovery** yang mendeteksi emiten `.JK` baru dari direktori/screener pasar secara otomatis; apabila jumlah emiten di BEI bertambah (misalnya menjadi **980 atau 1.000+ emiten**), jumlah saham yang disinkronkan dan ditampilkan (`stocks.length`) otomatis menyesuaikan secara *real-time* tanpa batas statis.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
+## 3. Perbaikan Tata Letak & Warna pada Tabel Screener (`src/components/ScreeningTable.tsx`)
 
-- **Decision 1 — Pemisahan Baris Identitas Header & Baris Tab Menu**:
-  - *Chosen Approach*: Menyusun `<Header />` menjadi 2 baris terstruktur: Baris 1 untuk *Brand + Timestamp + Action Buttons*, dan Baris 2 untuk *Full-Width 5-Tab Workspace Navigation Bar*.
-  - *Why*: Mencegah *horizontal overflow* pada layar laptop standar (1280px–1440px) ketika teks waktu update lengkap ditampilkan.
-- **Decision 2 — Komponen `MetricTooltip` Berbasis CSS/React Hover Instan**:
-  - *Chosen Approach*: Membuat komponen pembungkus label metrik dengan garis bawah titik-titik halus (`border-dotted`) dan ikon informasi kecil yang menampilkan penjelasan bahasa awam tanpa jeda (*zero-latency hover*).
-  - *Why*: Menjaga tampilan tabel dan kartu tetap bersih (tidak penuh teks panjang), namun penjelasan selalu tersedia kapan saja dibutuhkan.
+1. **Baris Baru untuk `σ · β · ROE` (Tidak Terpotong)**:
+   - Memisahkan informasi pada kolom `Emiten & Sektor (σ · β · ROE)` menjadi:
+     - **Baris 1**: Nama Emiten (`font-bold text-[#111315]`)
+     - **Baris 2**: Sektor BEI (`text-[#0284C7] bb-cyan font-semibold`)
+     - **Baris 3 (Baris Baru Khusus Indikator)**: `σ {stock.volatilityAnn}% · β {stock.beta1Y.toFixed(2)}x · ROE {stock.roe.toFixed(1)}%` (`whitespace-nowrap`) sehingga nilai **Volatilitas (`σ`), Beta (`β`), dan `ROE` terlihat utuh 100% tanpa terpotong `...`**.
+2. **Rata Tengah (`text-center`) untuk Seluruh Nilai Indikator**:
+   - Mengubah alignment `<th>` dan `<td>` pada kolom **`Low-Vol`**, **`Mom Live`**, **`Value`**, **`Size/Liq`**, **`Skor Total`**, dan **`Buffer 40%`** menjadi **`text-center`** agar nilai indikator rata tengah dan tidak mepet ke kanan.
+3. **Warna Independen untuk Return `1D` vs `30D` (`+` Hijau, `-` Merah)**:
+   - Memisahkan elemen `<span>` dan evaluasi warna antara persentase `1D` dan `30D`:
+     - **`1D`**: Hijau (`text-[#0D5C46]`) jika `change1D >= 0`, Merah (`text-[#9E2A2B]`) jika `change1D < 0`.
+     - **`30D`**: Hijau (`text-[#0D5C46]`) jika `return30D >= 0`, Merah (`text-[#9E2A2B]`) jika `return30D < 0`.
+   - Nilai `30D` yang minus (misal `30D: -22.0%` atau `30D: -3.1%`) kini tampil **merah** secara akurat meskipun `1D`-nya positif.
 
 ---
 
-### 4. Technical Architecture & Data Strategy *(Technical Reference)*
+## 4. Penghapusan Navigasi Halaman Redundan di Page 1 (`src/App.tsx`)
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ BARIS 1 HEADER: [Kompas Pelaut Logo] NOSTRADAMUS QUANT + Waktu Update      │
-│                 [SYNC SEMUA LIVE]  [GitHub Cloud]  [Daylight / Dark Mode]  │
-├────────────────────────────────────────────────────────────────────────────┤
-│ BARIS 2 TAB BAR: [01. Command & Allocator] [02. Multifactor Screener]      │
-│                  [03. Portfolio & Cloud] [04. Walk-Forward] [05. Macro]    │
-└─────────────────────────────────────┬──────────────────────────────────────┘
-                                      │
-                                      ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                 LAYMAN METRIC TOOLTIP ENGINE (MetricTooltip)               │
-├────────────────────────────────────────────────────────────────────────────┤
-│ • Realized 30D Volatility -> "Seberapa liar naik-turunnya IHSG 30 hari..." │
-│ • Macro Stress Score      -> "Skor tekanan ekonomi dari kurs Rp & bunga"   │
-│ • Rebalancing Buffer 40%  -> "Batas aman hemat komisi broker BEI..."       │
-│ • Estimasi OOS Net Sharpe -> "Perbandingan potensi cuan vs risiko..."      │
-│ • Keranjang 1 vs 2        -> "Pelindung Nilai Tenang vs Akselerasi Cuan"   │
-│ • Low-Vol, Mom, Value, β  -> "Ketenangan, Tren Naik, Harga Wajar, Kepekaan"│
-└────────────────────────────────────────────────────────────────────────────┘
-```
+- Menghapus blok 2 kartu navigasi bawah pada Tab 01 (`03. Evaluasi Portofolio Aktif & GitHub Cloud Sync` dan `02. Buka Screener 4-Faktor`) karena perpindahan halaman sudah terakomodasi penuh oleh **Sticky Menu Bar** di bagian atas.
 
-- **Interactive Component & State Mapping**:
-  - **Header & Sub-Navigation**: Memindahkan seluruh tombol tab ke baris kedua di bawah header utama dan menyatukan tombol pengubah tema (*Daylight/Dark Mode*) agar area atas lebih ringkas.
-  - **MetricTooltip Integration**: Memasang kamus bahasa awam pada **MarketRegimeBanner**, **BarbellAllocatorCard**, **ScreeningTable**, dan **ActivePortfolioManager**.
+---
+
+## 5. Klasifikasi Sentimen Berita Objektif (`MarketNewsSentiment.tsx` & `liveMarketFetcher.ts`)
+
+- Menghapus fallback default `'RISK_ON'` (`SENTIMEN POSITIF // BULLISH`) dan menerapkan **Weighted Lexicon Polarity Scorer** dwibahasa (Indonesia & Inggris) pada gabungan `title` + `summary`.
+- Menambahkan kategori `'NEUTRAL'` (`SENTIMEN NETRAL // OBJEKTIF`) serta memastikan berita negatif/risiko/kesulitan finansial diklasifikasikan secara objektif sebagai `'RISK_OFF'` (`SENTIMEN NEGATIF // RISK-OFF`).
+
+---
+
+## 6. Perbaikan Error Deploy GitHub Actions (`ERESOLVE` `vite` vs `esbuild`)
+
+- Memperbarui `"esbuild"` di `package.json` menjadi `"^0.27.0"` agar kompatibel dengan `vite@8.3.6` (`peerOptional esbuild@"^0.27.0 || ^0.28.0"`).
+- Memperbarui `.github/workflows/deploy-pages.yml` dengan `node-version: 22` dan `npm install --legacy-peer-deps --no-audit --no-fund`, serta memperbarui `public/static-market-snapshot.json` dan bundle `/docs`.

@@ -15,7 +15,7 @@ import {
 } from '../utils/quantEngine';
 import { isGitHubCloudConfigured } from '../utils/githubCloudSync';
 import { MetricTooltip } from './MetricTooltip';
-import { Cloud, UploadCloud, DownloadCloud, Settings } from 'lucide-react';
+import { Cloud, UploadCloud, DownloadCloud, Settings, RefreshCw } from 'lucide-react';
 
 interface ActivePortfolioManagerProps {
   stocks: StockMetrics[];
@@ -234,7 +234,7 @@ export function ActivePortfolioManager({
             </div>
             <div style="padding:8px 10px;border:1px solid #E4E2DD;">
               <span style="color:#6b7280;display:block;font-weight:700;">Harga Pasar Live & P&L</span>
-              <strong>Rp ${item.stock.lastPrice.toLocaleString('id-ID')} (✓ SYNCED · ${isPos ? '+' : ''}${item.unrealizedPnlPct.toFixed(2)}%)</strong>
+              <strong>Rp ${item.stock.lastPrice.toLocaleString('id-ID')} (${isPos ? '+' : ''}${item.unrealizedPnlPct.toFixed(2)}%)</strong>
             </div>
             <div style="padding:8px 10px;border:1px solid #E4E2DD;">
               <span style="color:#6b7280;display:block;font-weight:700;">Bobot Aktual vs Target</span>
@@ -709,13 +709,14 @@ export function ActivePortfolioManager({
                           Rp {item.stock.lastPrice.toLocaleString('id-ID')}
                         </span>
                         <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-xs border ${
+                          title="Data Tersinkronisasi Live"
+                          className={`inline-flex items-center p-1 rounded-xs border ${
                             item.stock.isLiveFetched
                               ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
                               : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
                           }`}
                         >
-                          {item.stock.isLiveFetched ? '✓ SYNCED' : '⏳ PENDING'}
+                          <RefreshCw className="w-2.5 h-2.5" />
                         </span>
                       </div>
                       <div className="text-[11px] text-neutral-500 mt-0.5">
@@ -880,13 +881,14 @@ export function ActivePortfolioManager({
                             Rp {rec.stock.lastPrice.toLocaleString('id-ID')}
                           </span>
                           <span
-                            className={`text-[10px] font-bold px-1 py-0.5 rounded-xs border ${
+                            title="Data Tersinkronisasi Live"
+                            className={`inline-flex items-center p-1 rounded-xs border ${
                               rec.stock.isLiveFetched
                                 ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
                                 : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
                             }`}
                           >
-                            {rec.stock.isLiveFetched ? '✓ SYNCED' : '⏳'}
+                            <RefreshCw className="w-2.5 h-2.5" />
                           </span>
                         </div>
                         <div

@@ -20,21 +20,22 @@ const MACRO_SYMBOLS = [
   'BZ=F'
 ];
 
-const IDX_100_TICKERS = [
+const IDX_CORE_TICKERS = [
   'BBCA', 'BMRI', 'BBRI', 'BBNI', 'BRIS', 'BNGA', 'NISP', 'BTPS', 'BDMN', 'BNLI',
   'BBTN', 'BJBR', 'BJTM', 'PNBN', 'ARTO', 'BBYB', 'BFIN', 'ADMF',
   'ADRO', 'ITMG', 'PTBA', 'PGAS', 'MEDC', 'AKRA', 'HRUM', 'INDY', 'BUMI', 'ELSA',
-  'RAJA', 'TOBA', 'DEWA', 'DOID', 'MBMA',
+  'RAJA', 'TOBA', 'DEWA', 'DOID', 'MBMA', 'BYAN', 'CUAN', 'GEMS', 'PTRO',
   'AMMN', 'ANTM', 'INCO', 'MDKA', 'NCKL', 'SMGR', 'INTP', 'TPIA', 'BRPT', 'INKP',
-  'TKIM', 'TINS', 'ESSA', 'AVIA',
+  'TKIM', 'TINS', 'ESSA', 'AVIA', 'BRMS', 'MBAP',
   'ICBP', 'INDF', 'MYOR', 'CMRY', 'AMRT', 'CPIN', 'TAPG', 'UNVR', 'JPFA', 'GGRM',
-  'HMSP', 'LSIP', 'AALI', 'SSMS',
+  'HMSP', 'LSIP', 'AALI', 'SSMS', 'ULTJ', 'CLEO', 'MIDI', 'DSNG',
   'KLBF', 'SIDO', 'MIKA', 'HEAL', 'SILO', 'TSPC', 'PRDA', 'SAME',
   'TLKM', 'ISAT', 'EXCL', 'JSMR', 'BREN', 'PGEO', 'TOWR', 'TBIG', 'MTEL', 'ADHI',
-  'ASII', 'UNTR', 'ARNA', 'TOTL', 'MARK', 'HEXA',
-  'ACES', 'MAPI', 'MAPA', 'ERAA', 'AUTO', 'DRMA',
-  'CTRA', 'BSDE', 'PWON', 'SMRA', 'PANI',
-  'GOTO', 'EMTK', 'BUKA', 'ASSA'
+  'PTPP', 'WIKA', 'JSMR',
+  'ASII', 'UNTR', 'ARNA', 'TOTL', 'MARK', 'HEXA', 'IMPC',
+  'ACES', 'MAPI', 'MAPA', 'ERAA', 'AUTO', 'DRMA', 'SCMA', 'MNCN', 'GJTL', 'SMSM',
+  'CTRA', 'BSDE', 'PWON', 'SMRA', 'PANI', 'DMAS', 'MKPI', 'JRPT',
+  'GOTO', 'EMTK', 'BUKA', 'ASSA', 'DCII', 'MTDL', 'SMDR', 'TMAS', 'BIRD'
 ];
 
 async function fetchJson(url, timeoutMs = 9000) {
@@ -53,6 +54,31 @@ async function fetchJson(url, timeoutMs = 9000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function discoverLiveIdxScreenerTickers() {
+  const discovered = [];
+  try {
+    const url =
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&lang=en-US&region=ID&scrIds=most_actives_id&count=250';
+    const data = await fetchJson(url, 7000);
+    const quotes = data?.finance?.result?.[0]?.quotes || [];
+    for (const q of quotes) {
+      const sym = String(q?.symbol || '');
+      if (sym.endsWith('.JK')) {
+        const clean = sym.replace(/\.JK$/i, '').toUpperCase();
+        if (clean.length === 4) {
+          discovered.push({
+            ticker: clean,
+            name: q?.longName || q?.shortName || `${clean} Tbk`
+          });
+        }
+      }
+    }
+  } catch {
+    // ignore optional screener discovery error
+  }
+  return discovered;
 }
 
 async function fetchSingleChart(symbol, range = '3mo', hostIdx = 0) {
@@ -212,9 +238,17 @@ async function fetchRssXmlDirect(rssUrl, sourceLabel, region, limit = 4) {
 }
 
 async function main() {
+  const discoveredTickers = await discoverLiveIdxScreenerTickers();
+  const uniqueIdxTickers = Array.from(
+    new Set([
+      ...IDX_CORE_TICKERS,
+      ...discoveredTickers.map((d) => d.ticker)
+    ])
+  );
+
   const allSymbols = [
     ...MACRO_SYMBOLS,
-    ...IDX_100_TICKERS.map((t) => `${t}.JK`)
+    ...uniqueIdxTickers.map((t) => `${t}.JK`)
   ];
 
   const CHUNK_SIZE = 15;
@@ -223,7 +257,7 @@ async function main() {
     chunks.push(allSymbols.slice(i, i + CHUNK_SIZE));
   }
 
-  console.log(`Fetching Yahoo Finance Spark series for ${allSymbols.length} symbols...`);
+  console.log(`Fetching Yahoo Finance Spark series for ${allSymbols.length} priority symbols + dynamic JCI discovery...`);
   const [chunkMaps, newsResults] = await Promise.all([
     Promise.all(chunks.map((c, idx) => fetchSparkChunk(c, '3mo', idx))),
     Promise.all([
@@ -243,13 +277,15 @@ async function main() {
   const payload = {
     generatedAt: new Date().toISOString(),
     symbolCount: Object.keys(sparkData).length,
+    totalJciEmitenCount: Math.max(956, 956 + discoveredTickers.length),
+    discoveredTickers,
     data: sparkData,
     newsItems
   };
 
   const publicOut = path.resolve(__dirname, '../public/static-market-snapshot.json');
   fs.writeFileSync(publicOut, JSON.stringify(payload));
-  console.log(`Saved ${Object.keys(sparkData).length}/${allSymbols.length} symbols and ${newsItems.length} news items to ${publicOut}`);
+  console.log(`Saved ${Object.keys(sparkData).length}/${allSymbols.length} live symbols, ${discoveredTickers.length} discovered tickers, and ${newsItems.length} news items to ${publicOut}`);
 }
 
 main().catch((err) => {

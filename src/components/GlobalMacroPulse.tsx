@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MacroCategory, MacroIndicator } from '../types/quant';
-import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
 
 interface GlobalMacroPulseProps {
   indicators: MacroIndicator[];
@@ -82,11 +82,12 @@ export function GlobalMacroPulse({
                       {item.change1D.toFixed(2)}%)
                     </span>
                     <span
-                      className={`text-[10px] font-bold ${
+                      title="Data Makro Tersinkronisasi Live"
+                      className={`inline-flex items-center ${
                         item.isLiveFetched ? 'text-[#0D5C46]' : 'text-[#D97706]'
                       }`}
                     >
-                      {item.isLiveFetched ? '✓ SYNCED' : '⏳'}
+                      <RefreshCw className="w-2.5 h-2.5" />
                     </span>
                   </div>
                 );
@@ -158,11 +159,14 @@ export function GlobalMacroPulse({
                         {item.label}
                       </span>
                       <span
-                        className={`text-[10px] font-bold ${
-                          item.isLiveFetched ? 'text-[#0D5C46]' : 'text-[#D97706]'
+                        title="Data Makro Tersinkronisasi Live"
+                        className={`inline-flex items-center p-1 rounded-xs border ${
+                          item.isLiveFetched
+                            ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
+                            : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
                         }`}
                       >
-                        {item.isLiveFetched ? '✓ SYNCED' : '⏳ PENDING'}
+                        <RefreshCw className="w-2.5 h-2.5" />
                       </span>
                     </div>
 

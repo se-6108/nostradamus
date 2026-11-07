@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MarketRegime } from '../types/quant';
 import { MetricTooltip } from './MetricTooltip';
-import { SlidersHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { SlidersHorizontal, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
 
 interface MarketRegimeBannerProps {
   regime: MarketRegime;
@@ -174,11 +174,14 @@ export function MarketRegimeBanner({
               className="text-[#D97706] bb-amber"
             />
             <span
-              className={`text-[10px] font-bold ${
-                isIhsgSynced ? 'text-[#0D5C46]' : 'text-[#D97706]'
+              title="Data IHSG Tersinkronisasi Live"
+              className={`inline-flex items-center p-1 rounded-xs border ${
+                isIhsgSynced
+                  ? 'text-[#0D5C46] border-[#059669]/40 bg-[#059669]/10'
+                  : 'text-[#D97706] border-[#F59E0B]/40 bg-[#F59E0B]/10'
               }`}
             >
-              {isIhsgSynced ? '✓ SYNCED' : '⏳ PENDING'}
+              <RefreshCw className="w-2.5 h-2.5" />
             </span>
           </div>
           <div className="flex items-baseline justify-between gap-2 mt-1.5">
