@@ -1,10 +1,10 @@
 {
   "schemaVersion": "3.0-DEMIGUEL-MF24",
-  "updatedAt": "2026-11-07T07:23:47.108Z",
+  "updatedAt": "2026-11-07T07:24:26.199Z",
   "strategyName": "Vol-Managed Multifactor + 40% Buffer",
   "rebalanceBufferPct": 40,
   "thresholdAnnVol": 18,
-  "capitalIdr": 19559381,
+  "capitalIdr": 20632981,
   "cashReserveIdr": 2781,
   "holdings": [
     {
@@ -95,6 +95,13 @@
       "ticker": "ESSA",
       "lots": 22,
       "avgBuyPrice": 493,
+      "addedAt": "2026-11-07",
+      "notes": "Active Multifactor Position"
+    },
+    {
+      "ticker": "DMAS",
+      "lots": 211,
+      "avgBuyPrice": 166,
       "addedAt": "2026-11-07",
       "notes": "Active Multifactor Position"
     }
