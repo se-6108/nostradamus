@@ -1,10 +1,10 @@
 {
   "schemaVersion": "3.0-DEMIGUEL-MF24",
-  "updatedAt": "2026-11-07T07:20:51.507Z",
+  "updatedAt": "2026-11-07T07:21:22.711Z",
   "strategyName": "Vol-Managed Multifactor + 40% Buffer",
   "rebalanceBufferPct": 40,
   "thresholdAnnVol": 18,
-  "capitalIdr": 16420281,
+  "capitalIdr": 17158281,
   "cashReserveIdr": 2781,
   "holdings": [
     {
@@ -67,6 +67,13 @@
       "ticker": "PRDA",
       "lots": 2,
       "avgBuyPrice": 3625,
+      "addedAt": "2026-11-07",
+      "notes": "Active Multifactor Position"
+    },
+    {
+      "ticker": "SRSN",
+      "lots": 2,
+      "avgBuyPrice": 95,
       "addedAt": "2026-11-07",
       "notes": "Active Multifactor Position"
     }
