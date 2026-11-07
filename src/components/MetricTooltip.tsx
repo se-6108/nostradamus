@@ -50,7 +50,7 @@ export function MetricTooltip({
           </span>
         )}
         <span className="block text-xs text-neutral-100 font-medium">
-          <strong className="text-[#34D399]">Arti Awam: </strong>
+          <strong className="text-[#34D399]">Definisi : </strong>
           {laymanExplanation}
         </span>
         {practicalGuide && (

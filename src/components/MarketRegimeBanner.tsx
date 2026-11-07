@@ -61,17 +61,17 @@ export function MarketRegimeBanner({
             </span>
             <span className="text-neutral-400">·</span>
             <MetricTooltip
-              label={`Rebalancing Buffer ${rebalanceBufferPct}%`}
-              title="Rebalancing Buffer (Zona Hemat Biaya Broker)"
-              laymanExplanation="Batas toleransi agar Anda tidak terlalu sering jual-beli saham. Selama saham yang Anda pegang masih masuk peringkat 40% teratas, saham tersebut tidak perlu dijual."
-              practicalGuide="Membantu menghemat potongan biaya sekuritas BEI (0,15% beli + 0,25% jual) hingga ~63% per tahun."
+              label={`Rebalancing Buffer ${rebalanceBufferPct}% (Stockbit 0,15%/0,25%)`}
+              title="Rebalancing Buffer & Efisiensi Biaya Stockbit Sekuritas"
+              laymanExplanation="Zona toleransi ±40% agar portofolio tidak melakukan jual-beli mikro akibat fluktuasi harian kecil. Di Stockbit Sekuritas, biaya beli adalah 0,15% dan jual 0,25% (total round-trip 0,40%) ditambah Bea Materai Rp 10.000 untuk Trade Confirmation (TC) harian > Rp 10 juta."
+              practicalGuide="Dengan Buffer 40%, posisi yang bergeser tipis ditahan (HOLD), menghemat friksi round-trip 0,40% dan mencegah penerbitan TC harian berulang di atas Rp 10 juta."
               className="text-[#0284C7] bb-cyan"
             />
             <span className="text-neutral-400">·</span>
             <span className="text-neutral-500">{dataSourceLabel}</span>
             <span className="text-neutral-400">·</span>
             <span className="text-[11px] text-neutral-400 italic">
-              (Arahkan kursor / hover pada metrik untuk arti bahasa awam)
+              (Arahkan kursor / hover pada metrik untuk definisi indikator)
             </span>
           </div>
 
@@ -101,7 +101,7 @@ export function MarketRegimeBanner({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0284C7] bb-cyan bg-[#FAF9F6] border border-[#E4E2DD] hover:border-[#0284C7] rounded-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span>Kalibrasi Vol &amp; Buffer</span>
+            <span>Kalibrasi Vol (8%–60%) &amp; Buffer</span>
           </button>
         </div>
       </div>
@@ -109,41 +109,63 @@ export function MarketRegimeBanner({
       {/* Collapsible Volatility & Rebalancing Buffer Calibration */}
       {showCalibration && (
         <div className="p-4 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-semibold">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold">
               <MetricTooltip
-                label="Target Volatilitas Tahunan (Konstanta c)"
-                title="Target Kalibrasi Volatilitas (c)"
-                laymanExplanation="Batas toleransi guncangan pasar yang Anda anggap wajar. Jika guncangan IHSG melewati batas ini, sistem otomatis menyarankan mengurangi porsi saham dan memperbesar uang tunai."
-                practicalGuide="15%–18% cocok untuk investor konservatif/moderat; 20%–24% untuk investor agresif."
+                label="Target Volatilitas Tahunan (Konstanta c · 8%–60%)"
+                title="Target Kalibrasi Volatilitas Tahunan (c)"
+                laymanExplanation="Batas toleransi guncangan tahunan yang Anda anggap wajar untuk pasar saham berkembang (BEI/IHSG). Berbeda dengan S&P 500 (~15–20%), saham komoditas dan second-liner BEI sering memiliki volatilitas 28%–55%."
+                practicalGuide="15%–20% = Konservatif/Moderat; 22%–35% = Agresif BEI; 36%–60% = Toleransi Penuh Emerging Market."
                 className="text-[#D97706] bb-amber"
               />
-              <span className="tabular-nums font-bold">{regime.thresholdAnnVol.toFixed(1)}%</span>
+              <div className="inline-flex items-center gap-1 shrink-0">
+                <input
+                  type="number"
+                  min={8}
+                  max={60}
+                  step={0.5}
+                  value={regime.thresholdAnnVol}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      onUpdateThreshold(Math.max(8, Math.min(60, val)));
+                    }
+                  }}
+                  className="w-16 px-1.5 py-0.5 text-xs font-bold tabular-nums text-right bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
+                />
+                <span className="tabular-nums font-bold text-[#D97706] bb-amber">%</span>
+              </div>
             </div>
             <input
               type="range"
-              min="12"
-              max="26"
+              min="8"
+              max="60"
               step="0.5"
               value={regime.thresholdAnnVol}
               onChange={(e) => onUpdateThreshold(parseFloat(e.target.value))}
               className="w-full accent-[#D97706] cursor-pointer"
             />
+            <div className="flex items-center justify-between text-[10px] text-neutral-400 font-semibold tabular-nums">
+              <span>8% (Defensif Ketat)</span>
+              <span>18% (Default Institusi)</span>
+              <span>35% (Agresif BEI)</span>
+              <span>60% (Max Emerging)</span>
+            </div>
             <p className="text-[11px] text-neutral-500">
-              Menentukan kapan bobot faktor diturunkan ke kas saat volatilitas IHSG melonjak.
+              Menentukan rasio penskalaan eksposur ekuitas ($c / \sigma_t$). Diperluas hingga <strong>60%</strong> agar dapat mengakomodasi lonjakan volatilitas indeks negara berkembang (BEI/IHSG).
             </p>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
               <MetricTooltip
-                label="No-Trade Rebalancing Buffer (Penghemat Biaya BEI)"
-                title="No-Trade Rebalancing Buffer"
-                laymanExplanation="Sabuk pengaman agar portofolio tidak bongkar-pasang setiap minggu. Saham lama tetap dipertahankan selama skornya masih di zona aman ini."
-                practicalGuide="Default Top 40% terbukti paling optimal menjaga profit bersih setelah dipotong fee sekuritas."
+                label="No-Trade Rebalancing Buffer (Peredam Fee Stockbit)"
+                title="No-Trade Rebalancing Buffer vs Fee Stockbit Sekuritas"
+                laymanExplanation="Sabuk pengaman agar portofolio tidak bongkar-pasang akibat noise harga harian. Mencegah biaya round-trip Stockbit Sekuritas sebesar 0,40% (0,15% Beli + 0,25% Jual) serta Bea Materai Rp 10.000 pada Trade Confirmation (TC) > Rp 10 juta."
+                practicalGuide="Default Top 40% terbukti paling optimal menjaga net alpha setelah dipotong fee sekuritas, PPh Final 0,1%, dan Bea Materai."
                 className="text-[#0284C7] bb-cyan"
               />
-              <span className="tabular-nums font-bold">Top {rebalanceBufferPct}%</span>
+              <span className="tabular-nums font-bold text-[#0284C7] bb-cyan">Top {rebalanceBufferPct}%</span>
             </div>
             <input
               type="range"
@@ -154,8 +176,14 @@ export function MarketRegimeBanner({
               onChange={(e) => onUpdateRebalanceBuffer(parseInt(e.target.value, 10))}
               className="w-full accent-[#0284C7] cursor-pointer"
             />
+            <div className="flex items-center justify-between text-[10px] text-neutral-400 font-semibold tabular-nums">
+              <span>20% (Ketat)</span>
+              <span>35%</span>
+              <span>40% (Optimal Stockbit)</span>
+              <span>50% (Longgar)</span>
+            </div>
             <p className="text-[11px] text-neutral-500">
-              Saham di portofolio tidak dijual selama peringkat kompositnya bertahan di Top {rebalanceBufferPct}% (memangkas turnover bulanan ~63%).
+              Menahan jual-beli selama peringkat saham bertahan di Top {rebalanceBufferPct}% &amp; deviasi lot dalam ±{rebalanceBufferPct}% (menghemat fee Stockbit 0,15% beli / 0,25% jual &amp; konsolidasi TC &gt; Rp 10 juta).
             </p>
           </div>
         </div>

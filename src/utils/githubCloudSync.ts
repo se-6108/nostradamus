@@ -1,13 +1,16 @@
 import { CloudStateBundle, GitHubCloudConfig } from '../types/quant';
+import { formatFullIndonesianDateTime } from './liveMarketFetcher';
 
 const GITHUB_CONFIG_STORAGE_KEY = 'nostradamus_github_pat_config_v1';
 
 /**
  * Automatically detects GitHub owner and repository name when running on GitHub Pages
- * (e.g., https://<username>.github.io/nostradamus/) and defaults repo to 'nostradamus'.
+ * (e.g., https://<username>.github.io/<repo>/) and defaults repo to 'nostradamus'.
+ * Leaves owner empty on non-github.io domains so any user who forks/clones the repo
+ * can simply enter their own GitHub Username & PAT Token.
  */
 export function detectDefaultGitHubRepoInfo(): { owner: string; repo: string } {
-  let detectedOwner = 'se-6108';
+  let detectedOwner = '';
   let detectedRepo = 'nostradamus';
 
   if (typeof window !== 'undefined') {
@@ -28,7 +31,7 @@ export function detectDefaultGitHubRepoInfo(): { owner: string; repo: string } {
   }
 
   return {
-    owner: detectedOwner || 'se-6108',
+    owner: detectedOwner,
     repo: detectedRepo || 'nostradamus'
   };
 }
@@ -55,7 +58,7 @@ export function loadGitHubCloudConfig(): GitHubCloudConfig {
     }
     const parsed = JSON.parse(raw) as Partial<GitHubCloudConfig>;
     return {
-      owner: parsed.owner?.trim() || defaults.owner || 'se-6108',
+      owner: parsed.owner?.trim() || defaults.owner || '',
       repo: parsed.repo?.trim() || defaults.repo || 'nostradamus',
       branch: parsed.branch?.trim() || 'main',
       filePath: parsed.filePath?.trim() || 'data/nostradamus_cloud_state.json',
@@ -291,11 +294,7 @@ export async function pushStateToGitHubRepo(
 
   const putData = (await putRes.json()) as { content?: { sha?: string } };
   const newSha = putData.content?.sha || currentSha || '';
-  const syncedAt = new Date().toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+  const syncedAt = formatFullIndonesianDateTime(new Date());
 
   return { sha: newSha, syncedAt };
 }

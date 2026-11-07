@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MarketRegime, StockMetrics } from '../types/quant';
 import {
   BasketSelectionMode,
@@ -13,6 +13,7 @@ interface BarbellAllocatorCardProps {
   regime: MarketRegime;
   stocks: StockMetrics[];
   capitalIdr: number;
+  actualPortfolioNavIdr?: number;
   onChangeCapital: (capital: number) => void;
   onLoadIdx100Universe?: () => void;
   onTriggerSweetAlert: (
@@ -26,6 +27,7 @@ export function BarbellAllocatorCard({
   regime,
   stocks,
   capitalIdr,
+  actualPortfolioNavIdr,
   onChangeCapital,
   onTriggerSweetAlert
 }: BarbellAllocatorCardProps) {
@@ -33,6 +35,10 @@ export function BarbellAllocatorCard({
   const [picksPerSleeve, setPicksPerSleeve] = useState<number>(4);
   const [selectionMode, setSelectionMode] =
     useState<BasketSelectionMode>('LIVE_FACTOR_LEADER');
+
+  useEffect(() => {
+    setRawInput(Math.round(capitalIdr).toString());
+  }, [capitalIdr]);
 
   const analytics = useMemo(
     () =>
@@ -65,7 +71,7 @@ export function BarbellAllocatorCard({
   const handleCapitalChange = (val: string) => {
     setRawInput(val);
     const num = parseInt(val.replace(/[^0-9]/g, ''), 10);
-    if (!isNaN(num) && num >= 1000000) {
+    if (!isNaN(num) && num >= 100000) {
       onChangeCapital(num);
     }
   };
@@ -105,14 +111,28 @@ export function BarbellAllocatorCard({
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <div>
-            <label className="block text-[10px] font-bold text-neutral-500 mb-1">
-              Modal Portofolio (IDR)
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-[10px] font-bold text-neutral-500">
+                Modal Portofolio Aktual (IDR)
+              </label>
+              {typeof actualPortfolioNavIdr === 'number' &&
+                actualPortfolioNavIdr > 0 &&
+                Math.abs(actualPortfolioNavIdr - capitalIdr) > 1000 && (
+                  <button
+                    type="button"
+                    onClick={() => onChangeCapital(Math.round(actualPortfolioNavIdr))}
+                    className="text-[10px] font-bold text-[#0284C7] bb-cyan hover:underline cursor-pointer"
+                    title="Samakan dengan Total Nilai Saham + Cadangan Kas Aktual di Tab 03"
+                  >
+                    Sync NAV Aktual
+                  </button>
+                )}
+            </div>
             <input
               type="text"
               value={Number(rawInput.replace(/[^0-9]/g, '') || 0).toLocaleString('id-ID')}
               onChange={(e) => handleCapitalChange(e.target.value)}
-              className="px-3 py-1.5 text-xs font-bold tabular-nums bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs w-44 text-right focus:outline-none focus:border-[#F59E0B]"
+              className="px-3 py-1.5 text-xs font-bold tabular-nums bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs w-48 text-right focus:outline-none focus:border-[#F59E0B]"
             />
           </div>
 

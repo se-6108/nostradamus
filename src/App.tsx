@@ -167,11 +167,14 @@ export default function App() {
   const [cashReserveIdr, setCashReserveIdr] = useState<number>(
     () => initialPortfolioCache?.cashReserveIdr ?? 15000000
   );
-  const [lastCacheSavedAt, setLastCacheSavedAt] = useState<string>(
-    () =>
-      initialScreenerCache?.savedAt ||
-      new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-  );
+  const [lastCacheSavedAt, setLastCacheSavedAt] = useState<string>(() => {
+    const cached =
+      initialPortfolioCache?.savedAt || initialScreenerCache?.fullDateTimeStr;
+    if (cached && cached.includes('Pukul')) {
+      return cached;
+    }
+    return formatFullIndonesianDateTime(new Date());
+  });
   const [lastFullSyncDateTime, setLastFullSyncDateTime] = useState<string>(
     () => initialScreenerCache?.fullDateTimeStr || formatFullIndonesianDateTime(new Date())
   );
@@ -195,6 +198,23 @@ export default function App() {
     () => stocks.filter((s) => s.isLiveFetched).length,
     [stocks]
   );
+
+  // Compute actual Portfolio Market Value + Cash Reserve (NAV Aktual) and auto-sync to Allocator Capital
+  const actualPortfolioNavIdr = useMemo(() => {
+    const stockMap = new Map(stocks.map((s) => [s.ticker.toUpperCase(), s]));
+    const holdingsMarketVal = holdings.reduce((sum, h) => {
+      const st = stockMap.get(h.ticker.toUpperCase());
+      const px = st && st.lastPrice > 0 ? st.lastPrice : h.avgBuyPrice;
+      return sum + h.lots * 100 * px;
+    }, 0);
+    return Math.round(holdingsMarketVal + cashReserveIdr);
+  }, [holdings, cashReserveIdr, stocks]);
+
+  useEffect(() => {
+    if (actualPortfolioNavIdr > 0) {
+      setCapitalIdr(actualPortfolioNavIdr);
+    }
+  }, [actualPortfolioNavIdr]);
 
   const handleToggleTheme = () => {
     const next = themeMode === 'dark' ? 'light' : 'dark';
@@ -338,18 +358,15 @@ export default function App() {
           setLiveIhsgQuote(bundle.liveIhsgQuote);
         }
 
-        const nowTime = new Date().toLocaleTimeString('id-ID', {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
+        const nowFullStr = formatFullIndonesianDateTime(new Date());
         const updatedCfg: GitHubCloudConfig = {
           ...cfg,
           lastSyncedSha: sha,
-          lastSyncedAt: nowTime
+          lastSyncedAt: nowFullStr
         };
         setGithubConfig(updatedCfg);
         saveGitHubCloudConfig(updatedCfg);
-        setLastCacheSavedAt(`${nowTime} (GitHub Cloud)`);
+        setLastCacheSavedAt(nowFullStr);
         setDataSourceLabel(`GitHub Cloud: ${cfg.owner}/${cfg.repo}`);
 
         if (!silent) {
@@ -509,16 +526,13 @@ export default function App() {
     }
   }, []);
 
-  // Keep instant local fallback synced
+  // Keep instant local fallback synced with full Indonesian Date + Time (HH:MM:SS WIB)
   useEffect(() => {
     if (isCalmSim) return;
     try {
-      const nowStr = new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      const nowFullStr = formatFullIndonesianDateTime(new Date());
       const payload: ScreenerCachePayload = {
-        savedAt: nowStr,
+        savedAt: nowFullStr,
         fullDateTimeStr: lastFullSyncDateTime,
         stocks,
         macroIndicators,
@@ -533,12 +547,9 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const nowStr = new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      const nowFullStr = formatFullIndonesianDateTime(new Date());
       const payload: PortfolioCachePayload = {
-        savedAt: nowStr,
+        savedAt: nowFullStr,
         holdings,
         cashReserveIdr,
         rebalanceBufferPct,
@@ -553,6 +564,7 @@ export default function App() {
   // Handlers that update portfolio/screener and auto-push to GitHub if enabled
   const handleUpdateHoldingsWithCloud = (nextHoldings: PortfolioHolding[]) => {
     setHoldings(nextHoldings);
+    setLastCacheSavedAt(formatFullIndonesianDateTime(new Date()));
     if (isGitHubCloudConfigured(githubConfig) && githubConfig.autoSyncOnEdit) {
       const bundle = buildCloudBundle(nextHoldings, undefined, undefined, undefined);
       handlePushToGitHub(githubConfig, bundle, true);
@@ -561,6 +573,7 @@ export default function App() {
 
   const handleUpdateCashWithCloud = (nextCash: number) => {
     setCashReserveIdr(nextCash);
+    setLastCacheSavedAt(formatFullIndonesianDateTime(new Date()));
     if (isGitHubCloudConfigured(githubConfig) && githubConfig.autoSyncOnEdit) {
       const bundle = buildCloudBundle(undefined, nextCash, undefined, undefined);
       handlePushToGitHub(githubConfig, bundle, true);
@@ -571,6 +584,7 @@ export default function App() {
     setRebalanceBufferPct(nextBuffer);
     const reranked = rankUniverseWithBuffer(stocks, nextBuffer);
     setStocks(reranked);
+    setLastCacheSavedAt(formatFullIndonesianDateTime(new Date()));
     if (isGitHubCloudConfigured(githubConfig) && githubConfig.autoSyncOnEdit) {
       const bundle = buildCloudBundle(undefined, undefined, reranked, nextBuffer);
       handlePushToGitHub(githubConfig, bundle, true);
@@ -670,12 +684,7 @@ export default function App() {
       );
       setRegime(nextRegime);
 
-      const nowStr = new Date().toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-      setLastCacheSavedAt(`${nowStr} WIB`);
+      setLastCacheSavedAt(fullTimestampStr);
       setLastFullSyncDateTime(fullTimestampStr);
 
       if (isGitHubCloudConfigured(githubConfig) && githubConfig.autoSyncOnEdit) {
@@ -1050,6 +1059,7 @@ export default function App() {
                   regime={regime}
                   stocks={stocks}
                   capitalIdr={capitalIdr}
+                  actualPortfolioNavIdr={actualPortfolioNavIdr}
                   onChangeCapital={setCapitalIdr}
                   onLoadIdx100Universe={handleLoadIdx100Universe}
                   onTriggerSweetAlert={(cap, picks, mode) =>
@@ -1135,11 +1145,11 @@ export default function App() {
             <div className="inline-flex items-center gap-1 font-bold text-[#D97706] bb-amber whitespace-nowrap shrink-0">
               <span>Made with</span>
               <span
-                className="inline-block animate-heartbeat text-rose-500 text-xs leading-none"
+                className="inline-block animate-flame text-xs leading-none"
                 role="img"
-                aria-label="beating heart"
+                aria-label="blazing fire"
               >
-                💓
+                🔥
               </span>
               <span>by Fayadh</span>
             </div>
