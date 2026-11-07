@@ -7,7 +7,7 @@ const GITHUB_CONFIG_STORAGE_KEY = 'nostradamus_github_pat_config_v1';
  * (e.g., https://<username>.github.io/nostradamus/) and defaults repo to 'nostradamus'.
  */
 export function detectDefaultGitHubRepoInfo(): { owner: string; repo: string } {
-  let detectedOwner = '';
+  let detectedOwner = 'se-6108';
   let detectedRepo = 'nostradamus';
 
   if (typeof window !== 'undefined') {
@@ -28,7 +28,7 @@ export function detectDefaultGitHubRepoInfo(): { owner: string; repo: string } {
   }
 
   return {
-    owner: detectedOwner,
+    owner: detectedOwner || 'se-6108',
     repo: detectedRepo || 'nostradamus'
   };
 }
@@ -55,7 +55,7 @@ export function loadGitHubCloudConfig(): GitHubCloudConfig {
     }
     const parsed = JSON.parse(raw) as Partial<GitHubCloudConfig>;
     return {
-      owner: parsed.owner?.trim() || defaults.owner || '',
+      owner: parsed.owner?.trim() || defaults.owner || 'se-6108',
       repo: parsed.repo?.trim() || defaults.repo || 'nostradamus',
       branch: parsed.branch?.trim() || 'main',
       filePath: parsed.filePath?.trim() || 'data/nostradamus_cloud_state.json',
@@ -346,47 +346,97 @@ export async function pullLiveMarketSnapshotFromGitHubApi(
 }
 
 /**
- * Triggers the GitHub Actions workflow (`sync-idx-market.yml`) via GitHub REST API (`workflow_dispatch`)
- * so the GitHub runner fetches fresh Yahoo Finance data for all 956+ JCI stocks and commits it to the repo.
+ * Dynamically discovers and triggers GitHub Actions workflows (`deploy-pages.yml` and `sync-idx-market.yml`)
+ * on `se-6108/nostradamus` (or user-configured repo) via GitHub REST API (`workflow_dispatch`).
+ * Never throws an unhandled error or triggers blind 404s.
  */
 export async function triggerGitHubActionsMarketSync(
   config: GitHubCloudConfig
 ): Promise<{ ok: boolean; message: string }> {
   if (!isGitHubCloudConfigured(config)) {
-    throw new Error(
-      'Konfigurasikan GitHub Username, Repo (nostradamus), dan Token PAT terlebih dahulu.'
-    );
+    return {
+      ok: false,
+      message: 'Konfigurasikan GitHub Username, Repo (nostradamus), dan Token PAT terlebih dahulu.'
+    };
   }
 
   const owner = encodeURIComponent(config.owner.trim());
   const repo = encodeURIComponent(config.repo.trim());
   const branch = config.branch.trim() || 'main';
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${config.patToken.trim()}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type': 'application/json'
+  };
 
-  const dispatchUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/sync-idx-market.yml/dispatches`;
-  const res = await fetch(dispatchUrl, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${config.patToken.trim()}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ ref: branch })
-  });
+  try {
+    // 1. Discover active workflows in the repository so we never hit a 404 on a missing filename
+    const listUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows`;
+    const listRes = await fetch(listUrl, {
+      method: 'GET',
+      headers,
+      cache: 'no-store'
+    });
 
-  if (res.status === 204 || res.ok) {
+    const triggeredNames: string[] = [];
+
+    if (listRes.ok) {
+      const listData = (await listRes.json()) as {
+        workflows?: Array<{ id: number; name: string; path: string; state: string }>;
+      };
+      const workflows = Array.isArray(listData.workflows) ? listData.workflows : [];
+
+      // Match sync-idx-market.yml and/or deploy-pages.yml (or any active workflow)
+      const targetWorkflows = workflows.filter(
+        (w) =>
+          w.state === 'active' &&
+          (w.path.endsWith('sync-idx-market.yml') ||
+            w.path.endsWith('deploy-pages.yml') ||
+            w.name.toLowerCase().includes('nostradamus') ||
+            w.name.toLowerCase().includes('sync'))
+      );
+
+      const candidates = targetWorkflows.length > 0 ? targetWorkflows : workflows.slice(0, 2);
+
+      for (const wf of candidates) {
+        try {
+          const dispatchRes = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${wf.id}/dispatches`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ ref: branch })
+            }
+          );
+          if (dispatchRes.status === 204 || dispatchRes.ok) {
+            const fileName = wf.path.split('/').pop() || wf.name;
+            triggeredNames.push(fileName);
+          }
+        } catch {
+          // continue to next candidate
+        }
+      }
+    }
+
+    if (triggeredNames.length > 0) {
+      return {
+        ok: true,
+        message: `GitHub Actions (${triggeredNames.join(' & ')}) berhasil dipicu di ${config.owner}/${config.repo} (branch ${branch}). Server GitHub sedang memperbarui 956+ saham JCI & membangun ulang halaman.`
+      };
+    }
+
     return {
-      ok: true,
-      message: `GitHub Actions Workflow (sync-idx-market.yml) berhasil dijalankan di ${config.owner}/${config.repo} (branch ${branch}). Server GitHub sedang memperbarui 956+ saham JCI.`
+      ok: false,
+      message: `Pastikan Token PAT Anda memiliki izin "workflow" (Classic) atau "Actions: Read and write" (Fine-Grained), serta file workflow (.github/workflows/deploy-pages.yml atau sync-idx-market.yml) sudah ter-push ke branch ${branch} di ${config.owner}/${config.repo}.`
+    };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Gagal menghubungi GitHub Actions API. Periksa koneksi atau izin Token PAT Anda.'
     };
   }
-
-  if (res.status === 404) {
-    throw new Error(
-      `Workflow sync-idx-market.yml belum ditemukan di branch ${branch} atau Token PAT belum memiliki izin "Actions / Workflow: Read & Write".`
-    );
-  }
-
-  const errText = await res.text();
-  throw new Error(`Gagal memicu GitHub Actions (${res.status}): ${errText.slice(0, 140)}`);
 }

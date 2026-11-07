@@ -122,11 +122,12 @@ export const CORE_IDX_EMITEN: IdxDirectoryEntry[] = [
   { ticker: 'GOTO', name: 'GoTo Gojek Tokopedia Tbk', sector: 'Technology', defaultRoe: -14.2, defaultDer: 0.32, defaultOpMargin: -18.5, approxPrice: 62, approxBeta: 1.72 },
   { ticker: 'EMTK', name: 'Elang Mahkota Teknologi Tbk', sector: 'Technology', defaultRoe: 4.2, defaultDer: 0.18, defaultOpMargin: 8.4, approxPrice: 468, approxBeta: 1.34 },
   { ticker: 'BUKA', name: 'Bukalapak.com Tbk', sector: 'Technology', defaultRoe: 1.2, defaultDer: 0.09, defaultOpMargin: 2.4, approxPrice: 118, approxBeta: 1.42 },
+  { ticker: 'MKNT', name: 'Mitra Komunikasi Nusantara Tbk', sector: 'Technology', defaultRoe: -4.5, defaultDer: 1.45, defaultOpMargin: -2.1, approxPrice: 32, approxBeta: 1.35 },
   { ticker: 'ASSA', name: 'Adi Sarana Armada Tbk', sector: 'Transportation & Logistics', defaultRoe: 11.8, defaultDer: 1.24, defaultOpMargin: 13.6, approxPrice: 735, approxBeta: 1.22 }
 ];
 
 /**
- * Full JCI / BEI Sectoral Ticker Registry (956 Emiten as of November 2026, Auto-Scaling on New IPOs)
+ * Full JCI / BEI Sectoral Ticker Registry (957 Emiten as of November 2026, Auto-Scaling on New IPOs)
  * Organized across the 11 Official IDX-IC Sectors
  */
 const SECTOR_TICKER_POOLS: Record<string, string[]> = {
@@ -243,9 +244,9 @@ const SECTOR_TICKER_POOLS: Record<string, string[]> = {
   Technology: [
     'ATIC', 'AWAN', 'AXIO', 'BELI', 'BUKA', 'CASH', 'CHIP', 'CYBR', 'DCII', 'DIVA',
     'DMMX', 'EDGE', 'ELIT', 'EMTK', 'ENVY', 'GLVA', 'GOTO', 'HDIT', 'IOTF', 'IRSX',
-    'JATI', 'KIOS', 'KREN', 'LMAS', 'LUCK', 'MCAS', 'MENN', 'MLPT', 'MPIX', 'MSTI',
-    'MTDL', 'NFCX', 'NINE', 'PGJO', 'PTSN', 'RUNS', 'SKYB', 'TECH', 'TFAS', 'TOSK',
-    'TRON', 'UVCR', 'WGSH', 'WIFI', 'WIRG', 'ZYRX'
+    'JATI', 'KIOS', 'KREN', 'LMAS', 'LUCK', 'MCAS', 'MENN', 'MKNT', 'MLPT', 'MPIX',
+    'MSTI', 'MTDL', 'NFCX', 'NINE', 'PGJO', 'PTSN', 'RUNS', 'SKYB', 'TECH', 'TFAS',
+    'TOSK', 'TRON', 'UVCR', 'WGSH', 'WIFI', 'WIRG', 'ZYRX'
   ],
   'Transportation & Logistics': [
     'AKSI', 'APOL', 'ASSA', 'BIRD', 'BLTA', 'BPTR', 'CMPP', 'DEAL', 'ELPI', 'GIAA',

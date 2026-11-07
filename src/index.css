@@ -99,6 +99,30 @@
   animation-play-state: paused;
 }
 
+@keyframes heartbeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.28);
+  }
+  30% {
+    transform: scale(0.96);
+  }
+  45% {
+    transform: scale(1.22);
+  }
+  60% {
+    transform: scale(1);
+  }
+}
+
+.animate-heartbeat {
+  display: inline-block;
+  animation: heartbeat 1.35s ease-in-out infinite;
+  transform-origin: center;
+}
+
 /* ============================================================================
  * DUAL-MODE BLOOMBERG TERMINAL THEME ENGINE (LIGHT DAYLIGHT & CLASSIC DARK)
  * ============================================================================ */

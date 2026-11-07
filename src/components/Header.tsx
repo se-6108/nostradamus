@@ -42,9 +42,9 @@ export function Header({
   ];
 
   return (
-    <header className="bg-[#FFFFFF] border-b border-[#E4E2DD]">
+    <header className="bg-[#FFFFFF] border-x border-b border-[#E4E2DD]">
       {/* ROW 1: Brand Identity + Last Updated Timestamp (Left) & Master Sync Actions (Right) */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="px-4 sm:px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <a
             href="#command"
@@ -126,7 +126,7 @@ export function Header({
 
       {/* ROW 2: Auto-Fit 5-Column Menu Bar Below Header (Zero Horizontal Scrollbar) */}
       <div className="border-t border-[#E4E2DD] bg-[#FAF9F6]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2">
+        <div className="px-4 sm:px-5 py-2">
           <nav
             aria-label="Menu Utama Terminal Quant"
             className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 w-full"

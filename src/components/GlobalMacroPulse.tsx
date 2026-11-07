@@ -44,9 +44,9 @@ export function GlobalMacroPulse({
   const marqueeItems = [...indicators, ...indicators];
 
   return (
-    <section className="bg-[#FFFFFF] border-b border-[#E4E2DD]">
+    <section className="bg-[#FFFFFF] border-x border-b border-[#E4E2DD] rounded-b-xs">
       {/* Running Text Global Macro Wire (Zero Horizontal Scrollbar) */}
-      <div className="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between gap-4 border-b border-[#E4E2DD]/70">
+      <div className="px-4 sm:px-5 py-2 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
           <span className="font-bold uppercase tracking-wider text-[11px] text-[#D97706] bb-amber shrink-0 pr-2 border-r border-[#E4E2DD]">
             GLOBAL MACRO WIRE //
@@ -109,7 +109,7 @@ export function GlobalMacroPulse({
 
       {/* Expandable Cross-Asset Macro Transmission Desk */}
       {expandedDetail && (
-        <div className="max-w-6xl mx-auto px-6 py-5 bg-[#FAF9F6]/60 space-y-4 max-h-[55vh] overflow-y-auto table-scroll-container">
+        <div className="px-4 sm:px-5 py-5 border-t border-[#E4E2DD]/70 bg-[#FAF9F6]/60 space-y-4 max-h-[55vh] overflow-y-auto table-scroll-container">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#D97706] bb-amber">

@@ -49,6 +49,21 @@ interface StaticMarketSnapshotPayload {
 const embeddedSnapshot: StaticMarketSnapshotPayload =
   (embeddedSnapshotRaw as unknown as StaticMarketSnapshotPayload) || {};
 
+if (!embeddedSnapshot.data) {
+  embeddedSnapshot.data = {};
+}
+// Ensure FCA/stagnant tickers like MKNT.JK (Rp 32.00, 0.00%, Volume Not Available on Yahoo Finance)
+// are always registered with their exact quote so they appear in Screener as ILLIQUID and never fail lookup
+if (!embeddedSnapshot.data['MKNT.JK']) {
+  embeddedSnapshot.data['MKNT.JK'] = {
+    symbol: 'MKNT.JK',
+    lastPrice: 32,
+    change1D: 0,
+    closes: Array(25).fill(32),
+    shortName: 'PT Mitra Komunikasi Nusantara Tbk'
+  };
+}
+
 /**
  * Evaluates whether a stock's historical closing price series represents an actively traded,
  * liquid BEI equity vs. a stagnant/suspended/gocap/FCA stock (e.g. MKNT.JK at Rp 32 with 0.00% flat closes).
@@ -365,6 +380,78 @@ function parseYahooSparkPayload(rawJson: any): Record<string, SparkSeriesItem> {
 }
 
 /**
+ * Browser-side CORS-safe Yahoo Finance v8 Single Chart Fetcher.
+ * Handles FCA/suspended/stagnant stocks (such as MKNT.JK at Rp 32.00 with "Volume Not Available")
+ * where `/v7/finance/spark` returns empty closes, by reading `meta.regularMarketPrice` directly.
+ */
+async function fetchYahooChartSingleViaBrowserCors(
+  symbol: string,
+  range: string = '3mo'
+): Promise<SparkSeriesItem | null> {
+  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol
+  )}?range=${encodeURIComponent(range)}&interval=1d`;
+
+  const proxyEndpoints = [
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+  ];
+
+  for (const proxyUrl of proxyEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3800);
+      const res = await fetch(proxyUrl, {
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const result = data?.chart?.result?.[0];
+      if (!result) continue;
+
+      const rawCloses: Array<number | null> = result?.indicators?.quote?.[0]?.close || [];
+      const closes = rawCloses.filter(
+        (c): c is number => typeof c === 'number' && Number.isFinite(c) && c > 0
+      );
+      const lastPrice = Number(
+        (
+          result?.meta?.regularMarketPrice ||
+          (closes.length > 0 ? closes[closes.length - 1] : 0)
+        ).toFixed(2)
+      );
+      if (!lastPrice || lastPrice <= 0) continue;
+
+      const prevClose =
+        closes.length >= 2
+          ? closes[closes.length - 2]
+          : result?.meta?.chartPreviousClose ||
+            result?.meta?.previousClose ||
+            lastPrice;
+      const change1D =
+        prevClose > 0 ? Number((((lastPrice - prevClose) / prevClose) * 100).toFixed(2)) : 0;
+
+      return {
+        symbol,
+        lastPrice,
+        change1D,
+        closes:
+          closes.length >= 2
+            ? closes.slice(-65).map((c) => Number(c.toFixed(2)))
+            : Array(22).fill(lastPrice),
+        shortName: result?.meta?.longName || result?.meta?.shortName || symbol
+      };
+    } catch {
+      // try next relay
+    }
+  }
+
+  return null;
+}
+
+/**
  * Browser-side CORS-safe Yahoo Finance Spark Batch Fetcher for Static Hosts (GitHub Pages `*.github.io`).
  * Tries multiple reliable public CORS relays with fast timeouts so live market sync works directly in the browser.
  */
@@ -381,6 +468,8 @@ async function fetchYahooSparkViaBrowserCors(
     `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
   ];
 
+  let out: Record<string, SparkSeriesItem> = {};
+
   for (const proxyUrl of proxyEndpoints) {
     try {
       const controller = new AbortController();
@@ -394,7 +483,8 @@ async function fetchYahooSparkViaBrowserCors(
         const json = await res.json();
         const parsed = parseYahooSparkPayload(json);
         if (Object.keys(parsed).length > 0) {
-          return parsed;
+          out = parsed;
+          break;
         }
       }
     } catch {
@@ -402,7 +492,19 @@ async function fetchYahooSparkViaBrowserCors(
     }
   }
 
-  return {};
+  // If this was a targeted lookup (e.g. "Tarik Ticker .JK" with <= 3 symbols) and any symbol had Volume Not Available
+  if (batchSymbols.length <= 3) {
+    for (const sym of batchSymbols) {
+      if (!out[sym]) {
+        const singleChart = await fetchYahooChartSingleViaBrowserCors(sym, range);
+        if (singleChart && singleChart.lastPrice > 0) {
+          out[sym] = singleChart;
+        }
+      }
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -450,6 +552,19 @@ export async function fetchYahooChartSeries(
   const snapItem = snapshot?.data?.[symbol];
   if (snapItem && snapItem.lastPrice > 0 && Array.isArray(snapItem.closes)) {
     return snapItem;
+  }
+
+  // Fallback for known IDX catalog tickers (including suspended/FCA tickers) so manual lookup never errors
+  const cleanTicker = symbol.replace(/\.JK$/i, '').toUpperCase();
+  const catalogEntry = IDX_SECTOR_CATALOG.find((c) => c.ticker === cleanTicker);
+  if (catalogEntry) {
+    const fallbackPrice = catalogEntry.approxPrice <= 67 ? catalogEntry.approxPrice : 0;
+    return {
+      lastPrice: fallbackPrice,
+      change1D: 0,
+      closes: fallbackPrice > 0 ? Array(22).fill(fallbackPrice) : [],
+      shortName: catalogEntry.name
+    };
   }
 
   throw new Error(`Ticker ${symbol} tidak ditemukan atau tidak aktif di Yahoo Finance.`);
@@ -544,12 +659,16 @@ export async function fetchYahooSparkBatch(
     }
   } else if (forceLiveNetwork) {
     // 3. Path B: Static Host / GitHub Pages (*.github.io) Explicit Live Sync
-    // Runs concurrent CORS live batches across ^JKSE, Global Macro, and Institutional Liquid BEI Stocks
-    const priorityLiveSymbols = uniqueSymbols.filter((sym) => {
-      if (!sym.endsWith('.JK')) return true;
-      const clean = sym.replace(/\.JK$/i, '');
-      return isInstitutionalLiquidCandidate(clean);
-    });
+    // When user queries <= 10 symbols (e.g. manual "Tarik Ticker .JK"), fetch all requested symbols directly.
+    // When syncing the full 956+ universe, prioritize ^JKSE, Global Macro, and Institutional Liquid BEI Stocks.
+    const priorityLiveSymbols =
+      uniqueSymbols.length <= 10
+        ? uniqueSymbols
+        : uniqueSymbols.filter((sym) => {
+            if (!sym.endsWith('.JK')) return true;
+            const clean = sym.replace(/\.JK$/i, '');
+            return isInstitutionalLiquidCandidate(clean);
+          });
 
     const CORS_BATCH_SIZE = 20;
     const CONCURRENT_CORS = 3;

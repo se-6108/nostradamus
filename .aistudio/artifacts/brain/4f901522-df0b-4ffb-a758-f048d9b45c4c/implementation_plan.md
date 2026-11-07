@@ -1,32 +1,94 @@
-# Rencana Implementasi: 100% Full JCI Sync Verification & Integrasi Penuh GitHub Cloud Real-Time Sync
+# Perbaikan Trigger GitHub Actions (`se-6108/nostradamus`), Penarikan Ticker `MKNT.JK`, Penyejajaran Lebar Header–Konten–Footer, & Teks Footer Baru
 
-## 1. Perbaikan Indikator Sinkronisasi Penuh 100% (`956/956 Emiten JCI`)
-- **Akar Masalah `888/957`**:
-  - Dari seluruh daftar emiten BEI (~956+ emiten), 888 emiten memiliki kuotasi perdagangan aktif di Yahoo Finance, sedangkan ~68–69 kode sisanya merupakan emiten yang sedang **suspensi panjang, *delisting*, atau *merger*** di BEI (seperti `FORZ`, `SRIL`, `FREN`, `RIMO`).
-  - Sebelumnya, emiten yang mengembalikan status kosong dari Yahoo Finance ditandai `isLiveFetched: false`, sehingga penghitung di Header tertahan di angka `888/957` (berwarna oranye) seolah-olah proses *sync* gagal atau *timeout*.
-- **Solusi Teknis (`src/utils/liveMarketFetcher.ts` & `src/utils/quantEngine.ts`)**:
-  - Setiap emiten dalam katalog JCI yang telah selesai diverifikasi ke Yahoo Finance (baik yang aktif maupun yang terkonfirmasi suspensi/tidak memiliki kuotasi aktif) ditandai **`isLiveFetched: true`** setelah pengecekan *batch* selesai, sehingga indikator sinkronisasi di Header, Sub-Toolbar, Keranjang, dan Screener selalu mencapai **100% penuh (`956/956 Emiten JCI`) berwarna hijau**.
-  - Sementara itu, 68–69 emiten yang terkonfirmasi suspensi/tidak aktif di Yahoo Finance tetap dikunci dengan **`isLiquid: false`** (berlabel **`ILLIQUID`** di Screener dengan keterangan `Rp — (Data N/A) · Suspensi / Tidak Aktif di YF`) dan **diblokir 100%** dari **Keranjang 1** maupun **Keranjang 2**.
-  - Menambahkan paralelisasi *batch* (3 *concurrent chunks* sekaligus) pada penarikan *live* browser agar proses sinkronisasi seluruh emiten berjalan jauh lebih cepat tanpa risiko *timeout*.
+Rencana ini mencakup empat pembaruan utama:
+1. **Penyejajaran Batas Lebar Header, Konten & Sticky Footer**: Menyatukan garis batas kiri-kanan **Header**, **Menu Bar**, **Global Macro Wire**, dan **Sticky Footer** agar 100% sejajar dengan kotak **Konten Utama** (`max-w-6xl mx-auto px-4 sm:px-6`).
+2. **Pembaruan Teks Sticky Footer**: Menghapus tautan *"Dokumentasi & GitHub Actions"* dari footer serta mengubah bagian kanan footer menjadi **"Made with 💓 by Fayadh"** lengkap dengan animasi detak jantung (*beating heart* `animate-pulse` / `heartbeat`).
+3. **Perbaikan Trigger GitHub Actions (`se-6108/nostradamus`)**: Mendeteksi dan memicu workflow `deploy-pages.yml` & `sync-idx-market.yml` secara otomatis dengan proteksi `try / catch` agar bebas dari error `404` maupun `Uncaught (in promise)`.
+4. **Dukungan Katalog & Penarikan Manual `MKNT.JK` (Rp 32 — `ILLIQUID`)**: Memasukkan `MKNT` ke katalog Screener sebagai `ILLIQUID` serta mendukung penarikan manual saham berstatus *"Volume Not Available"* di Yahoo Finance.
 
 ---
 
-## 2. Integrasi Penuh GitHub Cloud Real-Time Sync + Pemicu Update Harga Live via GitHub API
-- **Otomatisasi Konfigurasi Awal (`src/utils/githubCloudSync.ts`)**:
-  - Mengisi otomatis nama repository default menjadi **`nostradamus`** (`repo: 'nostradamus'`).
-  - Mendeteksi otomatis `owner` (username GitHub) jika aplikasi dibuka melalui domain `https://<username>.github.io/nostradamus`, sehingga pengguna cukup menempelkan token PAT satu kali.
-- **Sinkronisasi Penuh Lintas Perangkat (`data/nostradamus_cloud_state.json`)**:
-  - Menyinkronkan secara *real-time* seluruh state: **Posisi Portofolio Aktif (`holdings`)**, **Cadangan Kas (`cashReserveIdr`)**, **Modal Portofolio (`capitalIdr`)**, **Batas Buffer Rebalancing (`rebalanceBufferPct`)**, **Indikator Makro & IHSG**, serta **Daftar Kustom Screener**.
-  - Mendukung **Auto-Push saat Edit** dan **Auto-Pull saat Aplikasi Dibuka** dari perangkat mana pun (Laptop, Tablet, maupun Smartphone).
-- **Penarikan Harga Live & Pemicu GitHub Actions via GitHub API (`api.github.com`)**:
-  - Ketika GitHub Cloud sudah terhubung (PAT aktif) dan pengguna menekan tombol **Sync** di GitHub Pages:
-    1. Aplikasi menarik file `public/static-market-snapshot.json` terbaru langsung melalui **GitHub REST API** (`GET /repos/{owner}/{repo}/contents/public/static-market-snapshot.json`) dengan header `Accept: application/vnd.github.raw+json` (bebas *cache* CDN GitHub Pages dan bebas blokir CORS).
-    2. Menambahkan fitur **Trigger GitHub Actions Market Sync (`workflow_dispatch`)** langsung dari modal GitHub Cloud & tombol Sync (`POST /repos/{owner}/{repo}/actions/workflows/sync-idx-market.yml/dispatches`), sehingga pengguna bisa memerintahkan server GitHub Actions menarik seluruh 956+ saham JCI langsung dari server Yahoo Finance kapan saja dengan 1 klik.
+### User Review & Keputusan Terkonfirmasi
+
+> [!IMPORTANT]
+> Seluruh preferensi dan revisi tampilan Anda telah dimasukkan ke dalam rancangan ini:
+
+- **Keputusan Terkonfirmasi 1 (Desain & Teks Sticky Footer Baru + Lebar Sejajar)**:
+  - Batas lebar kiri dan kanan **Header**, **Global Macro Wire**, dan **Sticky Footer** disejajarkan persis dengan lebar **Konten Utama**.
+  - Menghapus tulisan/tombol *"Dokumentasi & GitHub Actions"* pada footer.
+  - Mengganti *"© 2026 · Credit: Fayadh"* di sisi kanan footer menjadi **"Made with 💓 by Fayadh"** dengan efek detak jantung berdetak (*beating heart animation*).
+- **Keputusan Terkonfirmasi 2 (Penanganan Emiten FCA/Stagnan seperti `MKNT` Rp 32)**:
+  - Memasukkan **`MKNT` (PT Mitra Komunikasi Nusantara Tbk — Rp 32, 0.00%)** langsung ke katalog bawaan Screener dengan status **`ILLIQUID`** (otomatis diblokir dari Keranjang 1 & 2).
+  - Memperbarui mesin penarik manual (**"Tarik Ticker .JK"**) agar mendukung pembacaan `meta.regularMarketPrice` dari endpoint `/v8/finance/chart/{ticker}.JK` ketika Yahoo Finance mengembalikan *"Volume Not Available"*.
+- **Keputusan Terkonfirmasi 3 (Otomasi Trigger GitHub Actions di `se-6108/nostradamus`)**:
+  - Mengisi default otomatis **`owner: 'se-6108'`** dan **`repo: 'nostradamus'`**.
+  - Menambahkan file workflow `.github/workflows/sync-idx-market.yml` sekaligus membuat fungsi **Trigger Server Sync** mendeteksi daftar workflow aktif di `se-6108/nostradamus` (`deploy-pages.yml` dan `sync-idx-market.yml`) lalu memicu eksekusinya tanpa error konsol.
 
 ---
 
-## 3. Panduan Interaktif 3 Langkah Pembuatan Token PAT di Modal GitHub Cloud (`src/components/GitHubCloudSyncModal.tsx`)
-- Menampilkan **Panduan 3 Langkah Praktis** langsung di dalam modal pengaturan GitHub Cloud Sync:
-  - **Langkah 1**: Tombol pintasan langsung (*1-Click Direct Link*) untuk membuka halaman pembuatan Token GitHub (`GitHub Token Generator`) dengan izin yang sudah dipilihkan (`repo` & `workflow` untuk Classic Token, atau `Contents: Read & Write` + `Actions: Read & Write` untuk Fine-Grained Token).
-  - **Langkah 2**: Kolom pengisian **GitHub Username (`owner`)** dan **Repository (`nostradamus` sudah terisi otomatis)** beserta tombol **Test Koneksi & Inisialisasi Cloud**.
-  - **Langkah 3**: Tombol aksi instan **Push State ke GitHub**, **Pull State dari GitHub**, dan **Trigger Server Sync (GitHub Actions)** beserta indikator status koneksi aktif.
+### 1. Tata Letak Sejajar Header, Konten Utama, dan Sticky Footer Baru
+
+```
+                ◄─────────────── max-w-6xl mx-auto px-4 sm:px-6 ───────────────►
+                ┌──────────────────────────────────────────────────────────────┐
+STICKY HEADER   │ [Logo] NOSTRADAMUS QUANT         [Sync Semua] [GitHub Cloud] │
+& 5-TAB MENU    ├──────────────────────────────────────────────────────────────┤
+                │ [01. Command] [02. Screener] [03. Portfolio] [04. Audit] ... │
+                ├──────────────────────────────────────────────────────────────┤
+MACRO WIRE      │ GLOBAL MACRO WIRE // USD/IDR · DXY · US10Y · VIX · BRENT ... │
+                └──────────────────────────────────────────────────────────────┘
+                │                       (Garis Batas Kiri & Kanan Sejajar)     │
+                ┌──────────────────────────────────────────────────────────────┐
+SUB-TOOLBAR     │ Sentimen Pasar: VOLATIL · 956/956 Emiten JCI   [Theme Mode]  │
+                └──────────────────────────────────────────────────────────────┘
+                ┌──────────────────────────────────────────────────────────────┐
+KONTEN UTAMA    │                                                              │
+(CARDS & TABLE) │   Kartu Alokator / Tabel Screener / Portofolio Aktif         │
+                │   (Lebar kotak 100% sejajar dengan Header & Footer)          │
+                │                                                              │
+                └──────────────────────────────────────────────────────────────┘
+                │                       (Garis Batas Kiri & Kanan Sejajar)     │
+                ┌──────────────────────────────────────────────────────────────┐
+STICKY FOOTER   │ © 2026 Nostradamus Quant Terminal     Made with 💓 by Fayadh │
+                └──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 2. Perbaikan Teknis `MKNT.JK` & Trigger GitHub Actions
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 1. PENARIKAN TICKER MANUAL ("Tarik Ticker .JK" — Contoh: MKNT)               │
+│                                                                              │
+│ Input "MKNT" ──► Cek Express / Browser CORS (/v8/finance/chart/MKNT.JK)      │
+│              ──► Baca meta.regularMarketPrice (Rp 32) meski Volume N/A       │
+│              ──► Fallback ke Katalog/Snapshot jika jaringan diblokir         │
+│              ──► Tandai isLiquid = false (ILLIQUID) & Blokir Keranjang 1 & 2 │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 2. TRIGGER SERVER SYNC GITHUB ACTIONS (se-6108/nostradamus)                  │
+│                                                                              │
+│ Klik "Trigger Server Sync"                                                   │
+│   ├─► GET /repos/se-6108/nostradamus/actions/workflows                       │
+│   ├─► Temukan ID workflow aktif (deploy-pages.yml & sync-idx-market.yml)     │
+│   ├─► POST /repos/se-6108/nostradamus/actions/workflows/{id}/dispatches      │
+│   └─► Tangani semua respons di dalam try/catch (Bebas Uncaught Error)        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 3. Rincian Implementasi
+
+1. **Penyejajaran Kontainer & Sticky Footer Baru (`Header`, `GlobalMacroPulse`, `Main`, dan `Footer`)**:
+   - Menyelaraskan lebar kontainer `Header` + `GlobalMacroPulse` (sticky di atas), `Main Content`, dan `Footer` (sticky di bawah) agar seluruhnya berada di dalam batas kolom `max-w-6xl w-full mx-auto px-4 sm:px-6` yang sejajar lurus dari atas ke bawah.
+   - Menghapus tombol *"Dokumentasi & GitHub Actions"* dari footer, menampilkan `© 2026 Nostradamus Quant Terminal` di sisi kiri, dan menampilkan **`Made with 💓 by Fayadh`** dengan animasi detak jantung (`animate-heartbeat`) di sisi kanan.
+2. **Dukungan Penuh Emiten FCA/Stagnan (`MKNT.JK` Rp 32)**:
+   - Menambahkan `MKNT` (*PT Mitra Komunikasi Nusantara Tbk*, Rp 32, `0.00%`, `isLiquid: false`) ke katalog BEI dan snapshot statis sehingga langsung tampil di Screener sebagai `ILLIQUID`.
+   - Memperbaiki `fetchYahooSparkBatch` dan `fetchYahooChartSeries` agar pencarian manual 1 ticker selalu memanggil `/v8/finance/chart/{symbol}` dan mengekstrak `meta.regularMarketPrice` meskipun saham berstatus *"Volume Not Available"*.
+3. **Otomasi GitHub Actions (`se-6108/nostradamus`) & Proteksi Error Konsol**:
+   - Mengatur default konfigurasi GitHub Cloud ke `owner: 'se-6108'` dan `repo: 'nostradamus'`.
+   - Menambahkan file `.github/workflows/sync-idx-market.yml` serta memperbarui `triggerGitHubActionsMarketSync` agar mendeteksi dan memicu `deploy-pages.yml` & `sync-idx-market.yml` secara otomatis dengan penanganan `try / catch` penuh.

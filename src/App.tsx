@@ -49,7 +49,7 @@ import { ArchitectureVault } from './components/ArchitectureVault';
 import { GitHubCloudSyncModal } from './components/GitHubCloudSyncModal';
 import { Sun, Moon, Cloud, RefreshCw } from 'lucide-react';
 
-const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v8_fullsync';
+const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v9_mknt';
 const PORTFOLIO_CACHE_KEY = 'nostradamus_dmu24_portfolio_v4';
 const THEME_CACHE_KEY = 'nostradamus_theme_mode_v1';
 
@@ -494,6 +494,16 @@ export default function App() {
         text: res.message,
         confirmButtonColor: '#D97706'
       });
+    } catch (err: unknown) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Info Trigger Workflow',
+        text:
+          err instanceof Error
+            ? err.message
+            : 'Pastikan Token PAT Anda memiliki izin "workflow" (Classic) atau "Actions: Read and write" (Fine-Grained).',
+        confirmButtonColor: '#D97706'
+      });
     } finally {
       setIsSyncingCloud(false);
     }
@@ -913,34 +923,38 @@ export default function App() {
           : 'theme-light min-h-screen flex flex-col bg-[#F4F5F7] text-[#111315]'
       }
     >
-      {/* Unified Sticky Top Shell: Header Bar + Menu Bar + Running Text Global Macro Wire */}
-      <div className="sticky top-0 z-40 w-full shadow-xs">
-        <Header
-          activeTab={activeTab}
-          onSelectTab={(tab) => {
-            setActiveTab(tab);
-            setShowDeployKitModal(false);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
-          onOpenCloudModal={() => setIsCloudModalOpen(true)}
-          isCloudConfigured={cloudConfigured}
-          lastFullSyncDateTime={lastFullSyncDateTime}
-          syncedCount={liveSyncedStockCount}
-          totalStockCount={stocks.length}
-          isMasterSyncing={isMasterSyncing}
-          syncStatusLabel={syncStatusLabel}
-          onMasterSyncAll={() => handleMasterSyncAll(false)}
-        />
+      {/* Unified Sticky Top Shell: Aligned 100% with Content Container Width */}
+      <div className="sticky top-0 z-40 w-full">
+        <div className="max-w-6xl w-full mx-auto px-4 sm:px-6">
+          <div className="shadow-xs">
+            <Header
+              activeTab={activeTab}
+              onSelectTab={(tab) => {
+                setActiveTab(tab);
+                setShowDeployKitModal(false);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onOpenCloudModal={() => setIsCloudModalOpen(true)}
+              isCloudConfigured={cloudConfigured}
+              lastFullSyncDateTime={lastFullSyncDateTime}
+              syncedCount={liveSyncedStockCount}
+              totalStockCount={stocks.length}
+              isMasterSyncing={isMasterSyncing}
+              syncStatusLabel={syncStatusLabel}
+              onMasterSyncAll={() => handleMasterSyncAll(false)}
+            />
 
-        {/* Running Text Global Macro Ticker Tape (Zero Horizontal Scrollbar) */}
-        <GlobalMacroPulse
-          indicators={macroIndicators}
-          macroStressScore={regime.macroStressScore}
-        />
+            {/* Running Text Global Macro Ticker Tape (Zero Horizontal Scrollbar) */}
+            <GlobalMacroPulse
+              indicators={macroIndicators}
+              macroStressScore={regime.macroStressScore}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Workspace Sub-Toolbar: Active Telemetry, Cloud Sync Status & Dual-Theme Switcher */}
-      <div className="max-w-6xl w-full mx-auto px-6 pt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 pt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
           <span className="font-bold text-[#D97706] bb-amber">
             Sentimen Pasar: {regime.status}
@@ -991,7 +1005,7 @@ export default function App() {
       </div>
 
       {/* Main Content Container: Renders ONLY the Active Workspace Tab (Zero Vertical Stacking) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-5 space-y-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 space-y-6">
         {showDeployKitModal ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between bg-[#FFFFFF] border border-[#E4E2DD] p-4 rounded-xs">
@@ -1109,24 +1123,26 @@ export default function App() {
         onTriggerWorkflow={(draftCfg) => handleTriggerGitHubWorkflow(draftCfg)}
       />
 
-      {/* Compact Sticky Bottom Footer Bar: Nostradamus Quant Terminal & Credit: Fayadh © 2026 */}
-      <footer className="sticky bottom-0 z-30 h-9 px-4 sm:px-6 bg-[#FFFFFF]/95 backdrop-blur-md border-t border-[#E4E2DD] flex items-center justify-between shadow-xs mt-8">
-        <div className="max-w-6xl w-full mx-auto flex items-center justify-between gap-3 text-[11px] text-neutral-500">
-          <div className="flex items-center gap-2.5 truncate">
-            <span className="font-semibold text-[#111315] truncate">
-              &copy; 2026 Nostradamus Quant Terminal
-            </span>
-            <span>·</span>
-            <button
-              type="button"
-              onClick={() => setShowDeployKitModal(!showDeployKitModal)}
-              className="text-[#0284C7] bb-cyan font-semibold hover:underline cursor-pointer whitespace-nowrap"
-            >
-              {showDeployKitModal ? 'Tutup Dokumentasi' : 'Dokumentasi & GitHub Actions'}
-            </button>
-          </div>
-          <div className="font-bold text-[#D97706] bb-amber whitespace-nowrap shrink-0">
-            &copy; 2026 · Credit: Fayadh
+      {/* Compact Sticky Bottom Footer Bar: Aligned 100% with Content Container Width */}
+      <footer className="sticky bottom-0 z-30 w-full mt-8">
+        <div className="max-w-6xl w-full mx-auto px-4 sm:px-6">
+          <div className="h-9 px-4 sm:px-5 bg-[#FFFFFF]/95 backdrop-blur-md border-x border-t border-[#E4E2DD] rounded-t-xs flex items-center justify-between gap-3 text-[11px] text-neutral-500 shadow-xs">
+            <div className="flex items-center gap-2 truncate">
+              <span className="font-semibold text-[#111315] truncate">
+                &copy; 2026 Nostradamus Quant Terminal
+              </span>
+            </div>
+            <div className="inline-flex items-center gap-1 font-bold text-[#D97706] bb-amber whitespace-nowrap shrink-0">
+              <span>Made with</span>
+              <span
+                className="inline-block animate-heartbeat text-rose-500 text-xs leading-none"
+                role="img"
+                aria-label="beating heart"
+              >
+                💓
+              </span>
+              <span>by Fayadh</span>
+            </div>
           </div>
         </div>
       </footer>
