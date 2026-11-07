@@ -1,6 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GitHubCloudConfig } from '../types/quant';
-import { Cloud, CheckCircle2, DownloadCloud, UploadCloud, X } from 'lucide-react';
+import {
+  Cloud,
+  CheckCircle2,
+  DownloadCloud,
+  UploadCloud,
+  X,
+  ExternalLink,
+  ShieldCheck,
+  Zap,
+  KeyRound
+} from 'lucide-react';
 
 interface GitHubCloudSyncModalProps {
   isOpen: boolean;
@@ -10,6 +20,8 @@ interface GitHubCloudSyncModalProps {
   onSaveConfig: (nextConfig: GitHubCloudConfig) => void;
   onPullNow: (customConfig?: GitHubCloudConfig) => void;
   onPushNow: (customConfig?: GitHubCloudConfig) => void;
+  onTestAndInit?: (customConfig: GitHubCloudConfig) => void;
+  onTriggerWorkflow?: (customConfig: GitHubCloudConfig) => void;
 }
 
 export function GitHubCloudSyncModal({
@@ -19,22 +31,37 @@ export function GitHubCloudSyncModal({
   onClose,
   onSaveConfig,
   onPullNow,
-  onPushNow
+  onPushNow,
+  onTestAndInit,
+  onTriggerWorkflow
 }: GitHubCloudSyncModalProps) {
-  const [owner, setOwner] = useState(config.owner);
-  const [repo, setRepo] = useState(config.repo);
+  const [owner, setOwner] = useState(config.owner || '');
+  const [repo, setRepo] = useState(config.repo || 'nostradamus');
   const [branch, setBranch] = useState(config.branch || 'main');
   const [filePath, setFilePath] = useState(
     config.filePath || 'data/nostradamus_cloud_state.json'
   );
-  const [patToken, setPatToken] = useState(config.patToken);
-  const [autoSyncOnEdit, setAutoSyncOnEdit] = useState(config.autoSyncOnEdit);
+  const [patToken, setPatToken] = useState(config.patToken || '');
+  const [autoSyncOnEdit, setAutoSyncOnEdit] = useState(
+    config.autoSyncOnEdit ?? true
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      setOwner(config.owner || '');
+      setRepo(config.repo || 'nostradamus');
+      setBranch(config.branch || 'main');
+      setFilePath(config.filePath || 'data/nostradamus_cloud_state.json');
+      setPatToken(config.patToken || '');
+      setAutoSyncOnEdit(config.autoSyncOnEdit ?? true);
+    }
+  }, [isOpen, config]);
 
   if (!isOpen) return null;
 
   const buildCurrentDraft = (): GitHubCloudConfig => ({
     owner: owner.trim(),
-    repo: repo.trim(),
+    repo: repo.trim() || 'nostradamus',
     branch: branch.trim() || 'main',
     filePath: filePath.trim() || 'data/nostradamus_cloud_state.json',
     patToken: patToken.trim(),
@@ -51,16 +78,16 @@ export function GitHubCloudSyncModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs max-w-xl w-full p-6 space-y-5 shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#E4E2DD] pb-3.5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-xl my-auto">
+        <div className="flex items-start justify-between gap-4 border-b border-[#E4E2DD] pb-3">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-[#D97706] bb-amber">
               <Cloud className="w-4 h-4" />
-              <span>GitHub Repository JSON + PAT Cloud Sync</span>
+              <span>GitHub Cloud Real-Time Sync · Repo: {repo || 'nostradamus'}</span>
             </div>
             <h3 className="text-base sm:text-lg font-bold text-[#111315] mt-0.5">
-              Sinkronisasi Cloud Real-Time Tanpa Database Berbayar
+              Sinkronisasi Cloud Real-Time (Portofolio, Kas, Screener &amp; Live Market API)
             </h3>
           </div>
           <button
@@ -72,32 +99,78 @@ export function GitHubCloudSyncModal({
           </button>
         </div>
 
-        <div className="p-3.5 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs text-xs text-neutral-600 space-y-1.5 leading-relaxed">
-          <div className="font-bold text-[#111315]">
-            Cara Kerja Real-Time Lintas Perangkat (Laptop &amp; Smartphone):
+        {/* Interactive 3-Step Setup Guide */}
+        <div className="p-3.5 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs text-xs text-neutral-700 space-y-2.5 leading-relaxed">
+          <div className="font-bold text-[#111315] flex items-center justify-between">
+            <span>Panduan 3 Langkah Setup GitHub Cloud Real-Time:</span>
+            {config.lastSyncedAt && (
+              <span className="text-[11px] font-semibold text-[#0D5C46]">
+                ✓ Tersinkron: {config.lastSyncedAt}
+              </span>
+            )}
           </div>
-          <p>
-            1. Buat <strong>Fine-Grained Personal Access Token (PAT)</strong> di{' '}
-            <code className="font-semibold">GitHub Settings → Developer settings → Personal access tokens</code>{' '}
-            dengan izin <strong>Repository Permissions → Contents: Read and write</strong> pada repo ini.
-          </p>
-          <p>
-            2. Setiap kali Anda menambah/mengubah portofolio atau screener, terminal akan melakukan{' '}
-            <code className="font-semibold">PUT /repos/&#123;owner&#125;/&#123;repo&#125;/contents/data/nostradamus_cloud_state.json</code>.
-            Saat Anda membuka URL GitHub Pages dari perangkat lain, klik <strong>Pull dari GitHub</strong> (atau otomatis saat halaman dimuat) untuk mendapatkan data terbaru.
-          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="p-2.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs space-y-1.5">
+              <div className="font-bold text-[#D97706] bb-amber flex items-center gap-1">
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Langkah 1: Buat Token PAT</span>
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                Klik tombol di bawah untuk membuat token GitHub dengan izin baca/tulis repo &amp; workflow otomatis:
+              </p>
+              <div className="flex flex-col gap-1 pt-0.5">
+                <a
+                  href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Nostradamus+Quant+Terminal"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-between px-2 py-1 text-[11px] font-bold bg-[#D97706] text-white rounded-xs hover:bg-[#B45309]"
+                >
+                  <span>Buat Token (Otomatis)</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                <a
+                  href="https://github.com/settings/personal-access-tokens/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-between px-2 py-0.5 text-[10px] font-semibold text-[#0284C7] bb-cyan hover:underline"
+                >
+                  <span>Atau Fine-Grained PAT</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs space-y-1">
+              <div className="font-bold text-[#0284C7] bb-cyan">
+                Langkah 2: Isi Username &amp; Token
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                Nama repository sudah otomatis terisi <code className="font-bold text-[#111315]">nostradamus</code>. Cukup isi <strong>Username GitHub</strong> Anda dan tempelkan kode token <code className="font-mono">ghp_...</code> / <code className="font-mono">github_pat_...</code>.
+              </p>
+            </div>
+
+            <div className="p-2.5 bg-[#FFFFFF] border border-[#E4E2DD] rounded-xs space-y-1">
+              <div className="font-bold text-[#0D5C46]">
+                Langkah 3: Test &amp; Inisialisasi
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                Klik <strong>Test Koneksi &amp; Inisialisasi Cloud</strong> di bawah. File <code className="font-mono">nostradamus_cloud_state.json</code> akan otomatis dibuat di repo Anda!
+              </p>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSaveForm} className="space-y-3.5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-neutral-600 mb-1">
-                GitHub Username / Owner
+                GitHub Username / Owner <span className="text-[#9E2A2B]">*</span>
               </label>
               <input
                 type="text"
                 required
-                placeholder="fayadh"
+                placeholder="Contoh: fayadh"
                 value={owner}
                 onChange={(e) => setOwner(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs font-bold bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
@@ -106,12 +179,12 @@ export function GitHubCloudSyncModal({
 
             <div>
               <label className="block text-xs font-semibold text-neutral-600 mb-1">
-                Repository Name
+                Repository Name (Otomatis: nostradamus) <span className="text-[#9E2A2B]">*</span>
               </label>
               <input
                 type="text"
                 required
-                placeholder="nostradamus-quant-terminal"
+                placeholder="nostradamus"
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs font-bold bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
@@ -136,7 +209,7 @@ export function GitHubCloudSyncModal({
 
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-neutral-600 mb-1">
-                Path File JSON di Repository
+                Path File JSON Cloud di Repository
               </label>
               <input
                 type="text"
@@ -151,22 +224,22 @@ export function GitHubCloudSyncModal({
 
           <div>
             <label className="block text-xs font-semibold text-neutral-600 mb-1">
-              GitHub Personal Access Token (Fine-Grained PAT: Contents Read &amp; Write)
+              GitHub Personal Access Token (Classic <code className="font-mono">ghp_...</code> atau Fine-Grained <code className="font-mono">github_pat_...</code>) <span className="text-[#9E2A2B]">*</span>
             </label>
             <input
               type="password"
               required
-              placeholder="github_pat_11A..."
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx atau github_pat_11A..."
               value={patToken}
               onChange={(e) => setPatToken(e.target.value)}
               className="w-full px-3 py-1.5 text-xs font-mono bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs focus:outline-none focus:border-[#F59E0B]"
             />
             <span className="block text-[11px] text-neutral-500 mt-1">
-              Token hanya disimpan di perangkat Anda untuk otorisasi langsung ke api.github.com.
+              Token disimpan terenkripsi lokal di browser perangkat Anda untuk koneksi langsung ke <code className="font-mono">api.github.com</code> (tanpa server pihak ketiga).
             </span>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-semibold text-[#111315] cursor-pointer pt-1">
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#111315] cursor-pointer pt-0.5">
             <input
               type="checkbox"
               checked={autoSyncOnEdit}
@@ -174,12 +247,32 @@ export function GitHubCloudSyncModal({
               className="accent-[#D97706]"
             />
             <span>
-              Auto-Push ke GitHub setiap kali saya mengubah posisi saham atau kas portofolio
+              Auto-Push ke GitHub setiap kali saya mengubah Portofolio, Kas, Screener, atau selesai Sync Live
             </span>
           </label>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#E4E2DD]">
-            <div className="flex items-center gap-2">
+          {/* Cloud Action Bar */}
+          <div className="p-3 bg-[#FAF9F6] border border-[#E4E2DD] rounded-xs space-y-2">
+            <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+              Aksi Cloud Real-Time &amp; Pemicu Update Harga Server GitHub:
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {onTestAndInit && (
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => {
+                    const draft = buildCurrentDraft();
+                    onSaveConfig(draft);
+                    onTestAndInit(draft);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#0D5C46] hover:bg-[#064E3B] rounded-xs cursor-pointer disabled:opacity-50"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Test Koneksi &amp; Inisialisasi Cloud</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 disabled={isSyncing}
@@ -188,10 +281,10 @@ export function GitHubCloudSyncModal({
                   onSaveConfig(draft);
                   onPullNow(draft);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0284C7] bb-cyan bg-[#FAF9F6] border border-[#E4E2DD] hover:border-[#0284C7] rounded-xs cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0284C7] bb-cyan bg-[#FFFFFF] border border-[#E4E2DD] hover:border-[#0284C7] rounded-xs cursor-pointer disabled:opacity-50"
               >
                 <DownloadCloud className="w-3.5 h-3.5" />
-                <span>Test Pull dari GitHub</span>
+                <span>Pull dari GitHub</span>
               </button>
 
               <button
@@ -202,32 +295,50 @@ export function GitHubCloudSyncModal({
                   onSaveConfig(draft);
                   onPushNow(draft);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0D5C46] bg-[#FAF9F6] border border-[#E4E2DD] hover:border-[#059669] rounded-xs cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0D5C46] bg-[#FFFFFF] border border-[#E4E2DD] hover:border-[#059669] rounded-xs cursor-pointer disabled:opacity-50"
               >
                 <UploadCloud className="w-3.5 h-3.5" />
                 <span>Push State Sekarang</span>
               </button>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:text-[#111315] cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                className="bb-btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-[#D97706] hover:bg-[#B45309] rounded-xs cursor-pointer"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Simpan Konfigurasi</span>
-              </button>
+              {onTriggerWorkflow && (
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => {
+                    const draft = buildCurrentDraft();
+                    onSaveConfig(draft);
+                    onTriggerWorkflow(draft);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#D97706] bb-amber bg-[#FFFFFF] border border-[#E4E2DD] hover:border-[#D97706] rounded-xs cursor-pointer disabled:opacity-50"
+                  title="Memicu GitHub Actions (sync-idx-market.yml) untuk menarik harga Yahoo Finance langsung dari server GitHub"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Trigger Server Sync (GitHub Actions)</span>
+                </button>
+              )}
             </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E4E2DD]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:text-[#111315] cursor-pointer"
+            >
+              Tutup
+            </button>
+            <button
+              type="submit"
+              className="bb-btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-[#D97706] hover:bg-[#B45309] rounded-xs cursor-pointer"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Simpan Konfigurasi</span>
+            </button>
           </div>
         </form>
       </div>
     </div>
   );
 }
+

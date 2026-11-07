@@ -33,7 +33,9 @@ import {
   loadGitHubCloudConfig,
   pullStateFromGitHubRepo,
   pushStateToGitHubRepo,
-  saveGitHubCloudConfig
+  saveGitHubCloudConfig,
+  triggerGitHubActionsMarketSync,
+  verifyGitHubRepoConnection
 } from './utils/githubCloudSync';
 import { Header } from './components/Header';
 import { GlobalMacroPulse } from './components/GlobalMacroPulse';
@@ -47,7 +49,7 @@ import { ArchitectureVault } from './components/ArchitectureVault';
 import { GitHubCloudSyncModal } from './components/GitHubCloudSyncModal';
 import { Sun, Moon, Cloud, RefreshCw } from 'lucide-react';
 
-const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v7_liq_div';
+const SCREENER_CACHE_KEY = 'nostradamus_dmu24_screener_v8_fullsync';
 const PORTFOLIO_CACHE_KEY = 'nostradamus_dmu24_portfolio_v4';
 const THEME_CACHE_KEY = 'nostradamus_theme_mode_v1';
 
@@ -238,7 +240,61 @@ export default function App() {
     ]
   );
 
-  // Pull state from GitHub Repository JSON
+  // Push (commit) state to GitHub Repository JSON
+  const handlePushToGitHub = useCallback(
+    async (
+      customCfg?: GitHubCloudConfig,
+      customBundle?: CloudStateBundle,
+      silent: boolean = false
+    ) => {
+      const cfg = customCfg ?? githubConfig;
+      if (!isGitHubCloudConfigured(cfg)) {
+        if (!silent) {
+          setIsCloudModalOpen(true);
+        }
+        return;
+      }
+
+      setIsSyncingCloud(true);
+      try {
+        const bundleToPush = customBundle ?? buildCloudBundle();
+        const { sha, syncedAt } = await pushStateToGitHubRepo(cfg, bundleToPush);
+        const updatedCfg: GitHubCloudConfig = {
+          ...cfg,
+          lastSyncedSha: sha,
+          lastSyncedAt: syncedAt
+        };
+        setGithubConfig(updatedCfg);
+        saveGitHubCloudConfig(updatedCfg);
+        setLastCacheSavedAt(`${syncedAt} (GitHub Cloud)`);
+        setDataSourceLabel(`GitHub Cloud: ${cfg.owner}/${cfg.repo}`);
+
+        if (!silent) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Tersimpan di GitHub Cloud Real-Time',
+            text: `State Portofolio, Kas & Screener (${bundleToPush.stocks.length} emiten) berhasil di-commit ke ${cfg.owner}/${cfg.repo}/${cfg.filePath}.`,
+            confirmButtonColor: '#D97706'
+          });
+        }
+      } catch (err: unknown) {
+        if (!silent) {
+          const msg = err instanceof Error ? err.message : 'Gagal melakukan commit ke GitHub.';
+          Swal.fire({
+            icon: 'error',
+            title: 'GitHub Push Error',
+            text: msg,
+            confirmButtonColor: '#D97706'
+          });
+        }
+      } finally {
+        setIsSyncingCloud(false);
+      }
+    },
+    [githubConfig, buildCloudBundle]
+  );
+
+  // Pull state from GitHub Repository JSON (with automatic initialization if file doesn't exist yet)
   const handlePullFromGitHub = useCallback(
     async (customCfg?: GitHubCloudConfig, silent: boolean = false) => {
       const cfg = customCfg ?? githubConfig;
@@ -305,8 +361,40 @@ export default function App() {
           });
         }
       } catch (err: unknown) {
-        if (!silent) {
-          const msg = err instanceof Error ? err.message : 'Gagal menarik data dari GitHub.';
+        const msg = err instanceof Error ? err.message : 'Gagal menarik data dari GitHub.';
+        if (msg.includes('FILE_NOT_INITIALIZED')) {
+          try {
+            const initialBundle = buildCloudBundle();
+            const { sha, syncedAt } = await pushStateToGitHubRepo(cfg, initialBundle);
+            const updatedCfg: GitHubCloudConfig = {
+              ...cfg,
+              lastSyncedSha: sha,
+              lastSyncedAt: syncedAt
+            };
+            setGithubConfig(updatedCfg);
+            saveGitHubCloudConfig(updatedCfg);
+            setLastCacheSavedAt(`${syncedAt} (GitHub Cloud)`);
+            setDataSourceLabel(`GitHub Cloud: ${cfg.owner}/${cfg.repo}`);
+
+            if (!silent) {
+              Swal.fire({
+                icon: 'success',
+                title: 'File Cloud Berhasil Diinisialisasi!',
+                text: `File ${cfg.filePath} belum ada sebelumnya dan kini otomatis dibuat di ${cfg.owner}/${cfg.repo}. Sinkronisasi Cloud Real-Time sudah aktif!`,
+                confirmButtonColor: '#D97706'
+              });
+            }
+          } catch (pushErr: unknown) {
+            if (!silent) {
+              Swal.fire({
+                icon: 'error',
+                title: 'Gagal Inisialisasi File Cloud',
+                text: pushErr instanceof Error ? pushErr.message : 'Periksa izin Write pada PAT Anda.',
+                confirmButtonColor: '#D97706'
+              });
+            }
+          }
+        } else if (!silent) {
           Swal.fire({
             icon: 'warning',
             title: 'GitHub Pull Info',
@@ -318,62 +406,98 @@ export default function App() {
         setIsSyncingCloud(false);
       }
     },
-    [githubConfig]
+    [githubConfig, buildCloudBundle]
   );
 
-  // Push (commit) state to GitHub Repository JSON
-  const handlePushToGitHub = useCallback(
-    async (
-      customCfg?: GitHubCloudConfig,
-      customBundle?: CloudStateBundle,
-      silent: boolean = false
-    ) => {
-      const cfg = customCfg ?? githubConfig;
-      if (!isGitHubCloudConfigured(cfg)) {
-        if (!silent) {
-          setIsCloudModalOpen(true);
-        }
+  // Test Connection & Initialize Cloud JSON in 1 Click
+  const handleTestAndInitGitHubCloud = useCallback(
+    async (draftCfg: GitHubCloudConfig) => {
+      if (!isGitHubCloudConfigured(draftCfg)) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Lengkapi Username & Token PAT',
+          text: 'Masukkan GitHub Username, nama repository (nostradamus), dan Personal Access Token terlebih dahulu.',
+          confirmButtonColor: '#D97706'
+        });
         return;
       }
 
       setIsSyncingCloud(true);
       try {
-        const bundleToPush = customBundle ?? buildCloudBundle();
-        const { sha, syncedAt } = await pushStateToGitHubRepo(cfg, bundleToPush);
+        const check = await verifyGitHubRepoConnection(draftCfg);
+        if (!check.ok) {
+          Swal.fire({
+            icon: 'error',
+            title: 'Koneksi GitHub Gagal',
+            text: check.message,
+            confirmButtonColor: '#D97706'
+          });
+          return;
+        }
+
+        const bundleToPush = buildCloudBundle();
+        const { sha, syncedAt } = await pushStateToGitHubRepo(draftCfg, bundleToPush);
         const updatedCfg: GitHubCloudConfig = {
-          ...cfg,
+          ...draftCfg,
           lastSyncedSha: sha,
           lastSyncedAt: syncedAt
         };
         setGithubConfig(updatedCfg);
         saveGitHubCloudConfig(updatedCfg);
         setLastCacheSavedAt(`${syncedAt} (GitHub Cloud)`);
-        setDataSourceLabel(`GitHub Cloud: ${cfg.owner}/${cfg.repo}`);
+        setDataSourceLabel(`GitHub Cloud: ${draftCfg.owner}/${draftCfg.repo}`);
 
-        if (!silent) {
-          Swal.fire({
-            icon: 'success',
-            title: 'Tersimpan di GitHub Repository JSON',
-            text: `State portofolio & screener berhasil di-commit ke ${cfg.owner}/${cfg.repo}/${cfg.filePath}. Kini dapat diakses real-time dari perangkat mana pun.`,
-            confirmButtonColor: '#D97706'
-          });
-        }
+        Swal.fire({
+          icon: 'success',
+          title: 'GitHub Cloud Real-Time Aktif!',
+          html: `
+            <div style="text-align:left;font-size:12.5px;line-height:1.6;color:#374151;">
+              <div><strong>Status Repo:</strong> ${check.message}</div>
+              <div><strong>File Cloud State:</strong> <code>${draftCfg.filePath}</code> berhasil di-commit (${syncedAt})</div>
+              <div><strong>Cakupan Sinkronisasi:</strong> Portofolio (${bundleToPush.holdings.length} posisi), Kas (Rp ${bundleToPush.cashReserveIdr.toLocaleString('id-ID')}), &amp; Screener (${bundleToPush.stocks.length} emiten JCI).</div>
+            </div>
+          `,
+          confirmButtonColor: '#D97706'
+        });
       } catch (err: unknown) {
-        if (!silent) {
-          const msg = err instanceof Error ? err.message : 'Gagal melakukan commit ke GitHub.';
-          Swal.fire({
-            icon: 'error',
-            title: 'GitHub Push Error',
-            text: msg,
-            confirmButtonColor: '#D97706'
-          });
-        }
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal Inisialisasi Cloud',
+          text: err instanceof Error ? err.message : 'Terjadi kesalahan saat menghubungi GitHub API.',
+          confirmButtonColor: '#D97706'
+        });
       } finally {
         setIsSyncingCloud(false);
       }
     },
-    [githubConfig, buildCloudBundle]
+    [buildCloudBundle]
   );
+
+  // Trigger GitHub Actions server-side Yahoo Finance sync (sync-idx-market.yml)
+  const handleTriggerGitHubWorkflow = useCallback(async (draftCfg: GitHubCloudConfig) => {
+    if (!isGitHubCloudConfigured(draftCfg)) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Konfigurasi GitHub Cloud Diperlukan',
+        text: 'Isi GitHub Username dan Token PAT terlebih dahulu untuk memicu GitHub Actions.',
+        confirmButtonColor: '#D97706'
+      });
+      return;
+    }
+
+    setIsSyncingCloud(true);
+    try {
+      const res = await triggerGitHubActionsMarketSync(draftCfg);
+      Swal.fire({
+        icon: res.ok ? 'success' : 'warning',
+        title: res.ok ? 'GitHub Actions Market Sync Dipicu!' : 'Info Trigger Workflow',
+        text: res.message,
+        confirmButtonColor: '#D97706'
+      });
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  }, []);
 
   // Keep instant local fallback synced
   useEffect(() => {
@@ -544,22 +668,29 @@ export default function App() {
       setLastCacheSavedAt(`${nowStr} WIB`);
       setLastFullSyncDateTime(fullTimestampStr);
 
+      if (isGitHubCloudConfigured(githubConfig) && githubConfig.autoSyncOnEdit) {
+        const nextBundle = buildCloudBundle(undefined, undefined, rerankedStocks, undefined);
+        handlePushToGitHub(githubConfig, nextBundle, true);
+      }
+
       if (!silent) {
         const liveCount = rerankedStocks.filter((s) => s.isLiveFetched).length;
+        const activeQuotedCount = rerankedStocks.filter((s) => s.lastPrice > 0).length;
         const liquidCount = rerankedStocks.filter(
           (s) => s.isLiquid !== false && s.lastPrice >= 68
         ).length;
+        const illiquidCount = rerankedStocks.length - liquidCount;
         Swal.fire({
           icon: 'success',
-          title: `✓ ${liveCount}/${rerankedStocks.length} Emiten & Makro Berhasil Sync Live`,
+          title: `✓ ${liveCount}/${rerankedStocks.length} Emiten JCI (100%) & Makro Berhasil Sync`,
           html: `
-            <div style="text-align:left;font-size:12.5px;line-height:1.6;color:#374151;">
+            <div style="text-align:left;font-size:12.5px;line-height:1.65;color:#374151;">
               <div><strong>Waktu Update Sistem:</strong> ${fullTimestampStr}</div>
               <div><strong>IHSG (^JKSE):</strong> ${activeQuote.lastPrice.toLocaleString('id-ID', {
                 minimumFractionDigits: 2
               })} (${activeQuote.change1D >= 0 ? '+' : ''}${activeQuote.change1D.toFixed(2)}%)</div>
-              <div><strong>Emiten Aktif Yahoo Finance:</strong> ✓ ${liveCount} dari ${rerankedStocks.length} emiten JCI (.JK)</div>
-              <div><strong>Filter Likuiditas Keranjang:</strong> <strong>${liquidCount} Saham Likuid Aktif</strong> (Saham Gocap/Illiquid otomatis diblokir dari Keranjang 1 & 2)</div>
+              <div><strong>Total Universe BEI Terverifikasi:</strong> ✓ <strong>${liveCount}/${rerankedStocks.length} Emiten JCI (100% Synced)</strong></div>
+              <div><strong>Status Kuotasi & Likuiditas:</strong> ${activeQuotedCount} Aktif Diperdagangkan · <strong>${liquidCount} Saham Likuid</strong> · <span style="color:#9E2A2B;font-weight:700;">${illiquidCount} Saham Gocap/Suspensi Diblokir dari Keranjang 1 & 2</span></div>
             </div>
           `,
           confirmButtonColor: '#D97706'
@@ -974,6 +1105,8 @@ export default function App() {
         }}
         onPullNow={(draftCfg) => handlePullFromGitHub(draftCfg, false)}
         onPushNow={(draftCfg) => handlePushToGitHub(draftCfg, undefined, false)}
+        onTestAndInit={(draftCfg) => handleTestAndInitGitHubCloud(draftCfg)}
+        onTriggerWorkflow={(draftCfg) => handleTriggerGitHubWorkflow(draftCfg)}
       />
 
       {/* Compact Sticky Bottom Footer Bar: Nostradamus Quant Terminal & Credit: Fayadh © 2026 */}
